@@ -10,7 +10,6 @@ const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL || '';
 const EVO_INSTANCE = process.env.NEXT_PUBLIC_EVOLUTION_INSTANCE || '';
 const EVO_TOKEN = process.env.NEXT_PUBLIC_EVOLUTION_TOKEN || '';
 
-// --- CONSTANTES DE MENSAGENS (TEXTOS ORIGINAIS AC ODONTOLOGIA) ---
 const SCRIPTS_COBRANCA: Record<number, string> = {
   [-2]: "Olá, {nome}! Tudo bem? Passando para lembrar que sua parcela na AC Odontologia vence em 2 dias ({dataFmt}). Se precisar do boleto ou chave pix, é só avisar.",
   [0]: "Olá, {nome}! Tudo bem? Hoje é o dia do vencimento da sua parcela na AC Odontologia. Se já realizou o pagamento, pode desconsiderar! Caso precise de ajuda, estamos à disposição.",
@@ -31,65 +30,76 @@ export default function EnviosPage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [filaQueue, setFilaQueue] = useState<any[]>([]);
 
+  // Novo Estado para rascunhos de edição (sem salvar no banco imediatamente)
+  const [draftMessages, setDraftMessages] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState<string | null>(null);
+
   const addLog = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
     setLogs(prev => [{ msg: `[${new Date().toLocaleTimeString()}] ${msg}`, type }, ...prev]);
   };
 
-  // Lógica corrigida para ignorar fuso horário e focar na data nominal (YYYY-MM-DD)
   const calcularDiferencaDias = (dataVencimento: string) => {
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-
+    if (!dataVencimento) return 0;
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
     const parts = dataVencimento.split('-');
     const venc = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     venc.setHours(0, 0, 0, 0);
-
-    const diffTime = hoje.getTime() - venc.getTime();
-    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return Math.round((hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24));
   };
 
   useEffect(() => { fetchFila(); }, []);
 
   async function fetchFila() {
     setLoading(true);
-    addLog("Sincronizando pacientes elegíveis...", "info");
-    
-    const { data } = await supabase.from('devedores_ativos').select('*').eq('status_cobranca', 'aguardando');
-    
+    addLog("Sincronizando régua de cobrança...", "info");
+    const { data } = await supabase.from('devedores_ativos').select('*').neq('status_cobranca', 'descartado');
     if (data) {
-      // FILTRO INTELIGENTE: Apenas os gatilhos exatos da régua
       const elegiveis = data.filter(item => {
         const diff = calcularDiferencaDias(item.data_vencimento);
-        return [-2, 0, 1, 5, 10, 15].includes(diff);
+        const gatilhoHoje = `D${diff >= 0 ? '+' : ''}${diff}`;
+        return [-2, 0, 1, 5, 10, 15].includes(diff) && item.ultimo_gatilho !== gatilhoHoje;
       });
-
       setFila(elegiveis);
-      addLog(`${elegiveis.length} pacientes nos gatilhos de hoje.`, "success");
+      addLog(`${elegiveis.length} registros pendentes hoje.`, "success");
     }
     setLoading(false);
   }
 
   const getMensagemFormatada = (item: any) => {
+    // 1. Prioridade para o rascunho local (que o utilizador está a digitar agora)
+    if (draftMessages[item.cpf] !== undefined) return draftMessages[item.cpf];
+    
+    // 2. Segunda prioridade para o que está no banco de dados
     if (item.mensagem_personalizada) return item.mensagem_personalizada;
     
+    // 3. Terceira prioridade para o script da régua
     const diff = calcularDiferencaDias(item.data_vencimento);
     const parts = item.data_vencimento.split('-');
     const dataFmt = `${parts[2]}/${parts[1]}/${parts[0]}`;
     const nome = item.nome.split(' ')[0];
-
     const script = SCRIPTS_COBRANCA[diff] || SCRIPTS_COBRANCA[15];
     return script.replace('{nome}', nome).replace('{dataFmt}', dataFmt);
   };
 
-  const salvarEdicaoNoBanco = async (cpf: string, novoTexto: string) => {
+  // MECANISMO DE SALVAMENTO MANUAL (Ícone de Disquete)
+  const salvarMensagemManual = async (cpf: string) => {
+    const textoParaSalvar = draftMessages[cpf];
+    if (textoParaSalvar === undefined) return;
+
+    setIsSaving(cpf);
     const { error } = await supabase
       .from('devedores_ativos')
-      .update({ mensagem_personalizada: novoTexto })
+      .update({ mensagem_personalizada: textoParaSalvar })
       .eq('cpf', cpf);
     
     if (!error) {
-      setFila(prev => prev.map(f => f.cpf === cpf ? { ...f, mensagem_personalizada: novoTexto } : f));
+      addLog(`Alterações salvas para o CPF ${cpf}`, "success");
+      // Atualiza a fila local para refletir que o banco agora tem este valor
+      setFila(prev => prev.map(f => f.cpf === cpf ? { ...f, mensagem_personalizada: textoParaSalvar } : f));
+    } else {
+      addLog("Erro ao guardar no banco de dados.", "error");
     }
+    setIsSaving(null);
   };
 
   // --- MOTOR DE AUTOPILOTO ---
@@ -108,75 +118,112 @@ export default function EnviosPage() {
     setIsAutopilotoActive(true);
     setFilaQueue([...fila]);
     setCountdown(5);
-    addLog("Autopiloto iniciado.", "info");
+    addLog("Autopiloto ligado.", "info");
   };
 
   const processarProximoDaFila = async () => {
     if (filaQueue.length === 0) {
-      setIsAutopilotoActive(false);
-      setCountdown(null);
-      addLog("Fila do dia concluída.", "success");
+      setIsAutopilotoActive(false); setCountdown(null);
+      addLog("Régua de hoje concluída.", "success");
       return;
     }
-    const proximo = filaQueue[0];
-    const sucesso = await dispararMensagem(proximo, true);
+    const sucesso = await dispararMensagem(filaQueue[0], true);
     if (sucesso) {
       const novaFila = filaQueue.slice(1);
       setFilaQueue(novaFila);
-      if (novaFila.length > 0) {
-        setCountdown(300); // 5 min
-        addLog(`Próximo envio em 5 minutos...`, "info");
-      }
+      if (novaFila.length > 0) { setCountdown(300); addLog("Aguardando 5 min...", "info"); }
     } else {
       setIsAutopilotoActive(false);
-      addLog("Autopiloto pausado.", "error");
+    }
+  };
+
+  // 🛡️ LÓGICA DE ENVIO COM SANITIZAÇÃO PÓS-SUCESSO
+  const realizarChamadaApi = async (numero: string, texto: string) => {
+    let numLimpo = numero.replace(/\D/g, '');
+    if (numLimpo.length > 0 && !numLimpo.startsWith('55')) {
+      numLimpo = '55' + numLimpo;
+    }
+
+    try {
+      const res = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': EVO_TOKEN },
+        body: JSON.stringify({ number: numLimpo, text: texto, delay: 1200 })
+      });
+      return { ok: res.ok, status: res.status, data: await res.json(), numUsado: numLimpo };
+    } catch (e) {
+      return { ok: false, status: 500, data: null, numUsado: numLimpo };
     }
   };
 
   const dispararMensagem = async (item: any, viaAutopiloto = false) => {
     if (!viaAutopiloto) setSendingId(item.cpf);
     const msgFinal = getMensagemFormatada(item);
+    const diff = calcularDiferencaDias(item.data_vencimento);
+    const gatilhoNome = `D${diff >= 0 ? '+' : ''}${diff}`;
     
-    addLog(`Enviando para: ${item.nome}`, "info");
+    addLog(`Tentativa 1: ${item.nome}`, "info");
 
-    try {
-      const response = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': EVO_TOKEN },
-        body: JSON.stringify({ number: item.celular, text: msgFinal, delay: 1200 })
+    let result = await realizarChamadaApi(item.celular, msgFinal);
+    let sucessoTotal = false;
+
+    if (result.ok) {
+      sucessoTotal = true;
+    } else if (result.status === 400) {
+      const errorStr = JSON.stringify(result.data).toLowerCase();
+      if (errorStr.includes('"exists":false') || errorStr.includes('not exists')) {
+        addLog("Número inexistente. Tentando inversão do 9º dígito...", "error");
+        let numAlt = result.numUsado.length === 13 
+          ? result.numUsado.slice(0, 4) + result.numUsado.slice(5) 
+          : result.numUsado.slice(0, 4) + '9' + result.numUsado.slice(4);
+
+        addLog(`Tentativa 2 (${numAlt})...`, "info");
+        const result2 = await realizarChamadaApi(numAlt, msgFinal);
+        if (result2.ok) sucessoTotal = true;
+      }
+    }
+
+    if (sucessoTotal) {
+      // SANITIZAÇÃO: Limpamos a mensagem personalizada após o envio
+      await supabase
+        .from('devedores_ativos')
+        .update({ 
+          ultimo_gatilho: gatilhoNome,
+          mensagem_personalizada: null // Reset para o próximo ciclo
+        })
+        .eq('cpf', item.cpf);
+      
+      // Limpa também o rascunho local
+      setDraftMessages(prev => {
+        const next = { ...prev };
+        delete next[item.cpf];
+        return next;
       });
 
-      if (response.ok) {
-        await supabase.from('devedores_ativos').update({ status_cobranca: 'enviado' }).eq('cpf', item.cpf);
-        setFila(prev => prev.filter(f => f.cpf !== item.cpf));
-        addLog(`Sucesso: ${item.nome}`, "success");
-        return true;
-      }
-      return false;
-    } catch (err) {
-      addLog("Erro de conexão.", "error");
-      return false;
-    } finally {
+      setFila(prev => prev.filter(f => f.cpf !== item.cpf));
+      addLog(`Sucesso e Sanitização concluída: ${item.nome}`, "success");
       if (!viaAutopiloto) setSendingId(null);
+      return true;
+    } else {
+      addLog(`Falha definitiva: ${item.nome}`, "error");
+      if (!viaAutopiloto) setSendingId(null);
+      return false;
     }
   };
 
   const descartarMensagem = async (item: any) => {
-    if (!confirm(`Anular envio para ${item.nome}?`)) return;
-    addLog(`Anulando: ${item.nome}`, "info");
-    const { error } = await supabase.from('devedores_ativos').update({ status_cobranca: 'enviado' }).eq('cpf', item.cpf);
-    if (!error) {
-      setFila(prev => prev.filter(f => f.cpf !== item.cpf));
-      addLog(`${item.nome} resolvido no sistema.`, "success");
-    }
+    if (!confirm(`Anular régua para ${item.nome}?`)) return;
+    await supabase.from('devedores_ativos').update({ status_cobranca: 'descartado' }).eq('cpf', item.cpf);
+    setFila(prev => prev.filter(f => f.cpf !== item.cpf));
+    addLog(`${item.nome} removido.`, "info");
   };
 
   return (
     <div className="max-w-7xl mx-auto px-6 pb-20 pt-8">
       <header className="flex justify-between items-center mb-12">
-        <div className="text-left">
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">ORION <span className="text-blue-600 not-italic">COMMAND</span></h1>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em]">Automação AC Odontologia v1.6.5</p>
+        <div className="text-left text-slate-900">
+          <h1 className="text-4xl font-black tracking-tighter italic">ORION <span className="text-blue-600 not-italic">COMMAND</span></h1>
+          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em]">Sanitization Engine v1.7.5</p>
         </div>
         <div className="flex gap-4">
           {!isAutopilotoActive ? (
@@ -198,8 +245,8 @@ export default function EnviosPage() {
         <div className="lg:col-span-3 space-y-4 text-left">
           {fila.length === 0 && !loading ? (
             <div className="bg-white rounded-[32px] p-24 text-center border border-slate-100 shadow-sm">
-                <MessageCircle size={48} className="mx-auto mb-4 text-slate-200" />
-                <p className="font-black text-slate-400 uppercase text-xs tracking-widest">Fila vazia para os gatilhos de hoje.</p>
+                <CheckCircle2 size={48} className="mx-auto mb-4 text-emerald-400" />
+                <p className="font-black text-slate-400 uppercase text-xs tracking-widest">Tudo em dia!</p>
             </div>
           ) : (
             fila.map((item) => (
@@ -214,32 +261,41 @@ export default function EnviosPage() {
                   </div>
                   <div className="flex items-center gap-6">
                      <div className="text-right">
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Vencimento</div>
-                        <div className="text-xs font-bold text-slate-700">{item.data_vencimento.split('-').reverse().join('/')}</div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gatilho</div>
+                        <div className="text-xs font-bold text-blue-600">D{calcularDiferencaDias(item.data_vencimento) >= 0 ? '+' : ''}{calcularDiferencaDias(item.data_vencimento)}</div>
                      </div>
                      {expandedCpf === item.cpf ? <ChevronUp className="text-blue-500" /> : <ChevronDown className="text-slate-300" />}
                   </div>
                 </div>
 
                 {expandedCpf === item.cpf && (
-                  <div className="px-6 pb-6 pt-2 bg-slate-50/30 border-t border-slate-50">
+                  <div className="px-6 pb-6 pt-2 bg-slate-50/30 border-t border-slate-50 animate-in fade-in slide-in-from-top-2">
                     <div className="space-y-4">
-                      <div>
-                        <label className="text-[10px] font-black text-blue-600 uppercase mb-2 block tracking-widest">Mensagem do Sistema</label>
+                      <div className="relative">
                         <textarea 
-                          className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 font-medium focus:ring-2 focus:ring-blue-500 outline-none h-28 shadow-inner"
+                          className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 font-medium h-28 shadow-inner outline-none focus:ring-1 focus:ring-blue-200 pr-12"
                           value={getMensagemFormatada(item)}
-                          onChange={(e) => salvarEdicaoNoBanco(item.cpf, e.target.value)}
+                          onChange={(e) => setDraftMessages({...draftMessages, [item.cpf]: e.target.value})}
                         />
+                        {/* BOTÃO SALVAR MANUAL (ÍCONE DE DISQUETE) */}
+                        <button 
+                          onClick={() => salvarMensagemManual(item.cpf)}
+                          disabled={draftMessages[item.cpf] === undefined || isSaving === item.cpf}
+                          className="absolute right-4 top-4 p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-0"
+                          title="Salvar alteração no banco"
+                        >
+                          {isSaving === item.cpf ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                        </button>
                       </div>
+
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2 text-slate-400 italic text-[10px]">
-                          <Save size={12} /> Salvo automaticamente no banco.
+                          <Info size={12} /> Clique no disquete acima para fixar a edição.
                         </div>
                         <div className="flex gap-3">
-                          <button onClick={() => descartarMensagem(item)} className="p-3 border border-slate-200 rounded-xl hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"><Trash2 size={18} /></button>
+                          <button onClick={() => descartarMensagem(item)} className="p-3 border border-slate-200 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all shadow-sm"><Trash2 size={18} /></button>
                           <button disabled={sendingId === item.cpf} onClick={() => dispararMensagem(item)} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2">
-                            {sendingId === item.cpf ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Enviar Agora
+                            {sendingId === item.cpf ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Enviar
                           </button>
                         </div>
                       </div>
@@ -251,28 +307,23 @@ export default function EnviosPage() {
           )}
         </div>
 
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 text-left">
           <div className="bg-slate-900 rounded-[32px] p-8 shadow-2xl sticky top-24 border border-slate-800 h-[600px] flex flex-col">
             <div className="flex items-center gap-3 text-blue-400 mb-8 border-b border-slate-800 pb-6">
               <Terminal size={20} />
-              <span className="font-black text-xs uppercase tracking-widest italic text-left">Monitor Live</span>
+              <span className="font-black text-xs uppercase tracking-widest italic text-left">Log Operacional</span>
             </div>
-
             {isAutopilotoActive && (
               <div className="mb-8 p-6 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-center">
-                <div className="text-blue-400 mb-2 font-black text-[10px] uppercase tracking-widest">Próximo Envio</div>
-                <div className="text-4xl font-black text-white">{Math.floor(countdown! / 60)}:{(countdown! % 60).toString().padStart(2, '0')}</div>
+                <div className="text-blue-400 mb-2 font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2">
+                  <Clock size={12} /> Próximo em
+                </div>
+                <div className="text-3xl font-black text-white">{Math.floor(countdown! / 60)}:{(countdown! % 60).toString().padStart(2, '0')}</div>
               </div>
             )}
-            
-            <div className="flex-1 overflow-y-auto space-y-4 font-mono text-[10px] scrollbar-hide text-left pr-2">
+            <div className="flex-1 overflow-y-auto space-y-4 font-mono text-[10px] scrollbar-hide text-left">
               {logs.map((log, i) => (
-                <div key={i} className={`p-4 rounded-2xl leading-relaxed border ${
-                  log.type === 'success' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' :
-                  log.type === 'error' ? 'bg-red-500/5 border-red-500/20 text-red-400' : 'bg-slate-800/40 border-slate-700 text-slate-400'
-                }`}>
-                  {log.msg}
-                </div>
+                <div key={i} className={`p-4 rounded-2xl border ${log.type === 'success' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' : log.type === 'error' ? 'bg-red-500/5 border-red-500/20 text-red-400' : 'bg-slate-800/40 border-slate-700 text-slate-400'}`}>{log.msg}</div>
               ))}
             </div>
           </div>
