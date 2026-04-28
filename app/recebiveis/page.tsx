@@ -181,7 +181,10 @@ export default function RecebiveisPage() {
         valor_pendente: item.valor,
         data_vencimento: formatToISODate(item.vencimento),
         celular: item.celular,
-        status_cobranca: 'aguardando'
+        status_cobranca: 'aguardando',
+        // CORREÇÃO DE LÓGICA: Resetamos campos de controle para novo ciclo da régua
+        mensagem_personalizada: null,
+        ultimo_gatilho: null
       }));
 
       const { error } = await supabase.from('devedores_ativos').upsert(payload, { onConflict: 'cpf' });
@@ -209,12 +212,12 @@ export default function RecebiveisPage() {
       </header>
 
       {/* Seção Didática: Instruções de Exportação */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 shadow-sm">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
+        <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 shadow-sm text-left">
           <h3 className="font-black text-blue-800 mb-4 flex items-center gap-2 uppercase tracking-wider text-xs">
             <Info size={16} /> A. Como obter a Planilha Financeira
           </h3>
-          <ol className="space-y-2 text-blue-900/70 font-semibold text-sm">
+          <ol className="space-y-2 text-blue-900/70 font-semibold text-sm text-left">
             <li className="flex gap-2"><span>1.</span> Acesse o Simples Dental</li>
             <li className="flex gap-2"><span>2.</span> Menu Financeiro {'>'} Recebíveis</li>
             <li className="flex gap-2"><span>3.</span> Filtre pelo mês atual (Situação: Pendente)</li>
@@ -222,11 +225,11 @@ export default function RecebiveisPage() {
           </ol>
         </div>
 
-        <div className="bg-emerald-50/50 p-6 rounded-3xl border border-emerald-100 shadow-sm">
+        <div className="bg-emerald-50/50 p-6 rounded-3xl border border-emerald-100 shadow-sm text-left">
           <h3 className="font-black text-emerald-800 mb-4 flex items-center gap-2 uppercase tracking-wider text-xs">
             <Info size={16} /> B. Como obter a Lista de Pacientes
           </h3>
-          <ol className="space-y-2 text-emerald-900/70 font-semibold text-sm">
+          <ol className="space-y-2 text-emerald-900/70 font-semibold text-sm text-left">
             <li className="flex gap-2"><span>1.</span> Acesse o Simples Dental</li>
             <li className="flex gap-2"><span>2.</span> Menu Pacientes</li>
             <li className="flex gap-2"><span>3.</span> Certifique-se de listar "Todos os Pacientes"</li>
@@ -236,7 +239,7 @@ export default function RecebiveisPage() {
       </section>
 
       {/* Seção de Uploads */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
         <div className={`relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200 hover:border-blue-400'} hover:cursor-grab active:cursor-grabbing`}>
           <div className="flex items-center gap-4">
             <div className={`p-3 rounded-2xl ${fileStates.finance.loaded ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
@@ -256,9 +259,9 @@ export default function RecebiveisPage() {
             <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
               <Users size={28} />
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-bold text-slate-700 mb-1">Lista de Pacientes</label>
-              <p className="text-xs text-slate-400 truncate">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
+            <div className="flex-1 text-left">
+              <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Lista de Pacientes</label>
+              <p className="text-xs text-slate-400 truncate text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
               <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
             {fileStates.patients.loaded && <CheckCircle2 className="text-emerald-500" size={24} />}
@@ -297,42 +300,42 @@ export default function RecebiveisPage() {
       </div>
 
       {/* Barra de Status */}
-      <div className="flex items-center gap-3 mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+      <div className="flex items-center gap-3 mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left">
         <AlertCircle size={18} className="text-blue-500" />
-        <p className="text-sm font-semibold text-slate-600">{status}</p>
+        <p className="text-sm font-semibold text-slate-600 text-left">{status}</p>
       </div>
 
       {/* Tabela de Revisão */}
       {combinedData.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12 text-left">
+          <div className="overflow-x-auto text-left">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-400">
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider">Paciente & CPF</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Paciente & CPF</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Status</th>
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider">Contato & Valor</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Contato & Valor</th>
                   <th className="p-4 text-[11px] font-black uppercase tracking-wider text-center">Remover</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 text-left">
                 {combinedData.map((item) => (
-                  <tr key={item.cpf} className="group hover:bg-blue-50/30 transition-colors">
-                    <td className="p-6">
-                      <div className="font-bold text-slate-800">{item.nome}</div>
-                      <div className="text-[10px] text-slate-400 font-mono tracking-tighter">{item.cpf}</div>
+                  <tr key={item.cpf} className="group hover:bg-blue-50/30 transition-colors text-left">
+                    <td className="p-6 text-left">
+                      <div className="font-bold text-slate-800 text-left">{item.nome}</div>
+                      <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf}</div>
                     </td>
                     <td className="p-6 text-center">
                       <span className={`px-4 py-1.5 rounded-full text-xs font-black border ${item.statusInfo?.color}`}>
                         {item.statusInfo?.label}
                       </span>
                     </td>
-                    <td className="p-6">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg w-fit group-hover:bg-white transition-colors">
+                    <td className="p-6 text-left">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg w-fit group-hover:bg-white transition-colors text-left">
                         <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                         {item.celular}
                       </div>
-                      <div className="text-xs font-bold text-slate-500 mt-1 pl-1">R$ {item.valor.toFixed(2)}</div>
+                      <div className="text-xs font-bold text-slate-500 mt-1 pl-1 text-left">R$ {item.valor.toFixed(2)}</div>
                     </td>
                     <td className="p-4 text-center">
                       <button 
