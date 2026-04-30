@@ -5,13 +5,13 @@ import { supabase } from '../lib/supabase';
 import { 
   Trash2, 
   CloudUpload, 
-  Copy, 
   CheckCircle2, 
   FileText, 
   Users, 
   AlertCircle,
   RefreshCw,
-  Info
+  Info,
+  DatabaseZap // Novo ícone para limpeza
 } from 'lucide-react';
 
 export default function RecebiveisPage() {
@@ -20,6 +20,7 @@ export default function RecebiveisPage() {
   const [combinedData, setCombinedData] = useState<any[]>([]);
   const [status, setStatus] = useState('Aguardando arquivos para iniciar a operação...');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isClearing, setIsClearing] = useState(false); // Estado para o botão de limpar
 
   const [fileStates, setFileStates] = useState({
     finance: { loaded: false, name: '' },
@@ -143,30 +144,34 @@ export default function RecebiveisPage() {
     setStatus(`Filtro aplicado: ${merged.length} registros identificados para ação.`);
   };
 
-  const handleCopyToClipboard = () => {
-    if (combinedData.length === 0) return;
-    
-    const header = "*📋 RELATÓRIO DE AÇÕES - AC ODONTOLOGIA*\n";
-    const divider = "====================================\n\n";
-    
-    const rows = combinedData.map(item => {
-      const statusEmoji = item.statusInfo.label.startsWith('D+') ? '🔴' : '🟢';
-      return `${statusEmoji} *${item.statusInfo.label}* | ${item.nome}\n` +
-             `💰 *Valor:* R$ ${item.valor.toFixed(2)}\n` +
-             `📅 *Vencimento Ref:* ${item.vencimento}\n` +
-             `📱 *Contato:* ${item.celular}\n` +
-             `------------------------------------`;
-    }).join('\n');
-
-    const textToCopy = `${header}${divider}${rows}\n\n_Gerado automaticamente pelo Orion ERP_`;
-    
-    navigator.clipboard.writeText(textToCopy);
-    setStatus('CHECK: Relatório formatado copiado!');
-    setTimeout(() => setStatus('Pronto para sincronizar com a nuvem.'), 3000);
-  };
-
   const handleDeleteRow = (cpf: string) => {
     setCombinedData(combinedData.filter(item => item.cpf !== cpf));
+  };
+
+  // 🗑️ NOVA FUNCIONALIDADE: LIMPAR A BASE NO SUPABASE
+  const handleClearDatabase = async () => {
+    if (!confirm('ATENÇÃO: Você está prestes a apagar TODOS os registros de cobrança da nuvem. Esta ação não pode ser desfeita. Deseja continuar?')) return;
+    
+    setIsClearing(true);
+    setStatus('Limpando base de dados remota...');
+
+    try {
+      // Deleta todos os registros da tabela devedores_ativos
+      const { error } = await supabase
+        .from('devedores_ativos')
+        .delete()
+        .neq('cpf', '0'); // Filtro dummy necessário para o Supabase permitir delete em massa
+
+      if (error) throw error;
+
+      setStatus('SUCESSO: A base de dados foi totalmente limpa.');
+      setCombinedData([]);
+    } catch (error: any) {
+      console.error(error);
+      setStatus(`Erro ao limpar base: ${error.message}`);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   const handleFinalSync = async () => {
@@ -182,7 +187,6 @@ export default function RecebiveisPage() {
         data_vencimento: formatToISODate(item.vencimento),
         celular: item.celular,
         status_cobranca: 'aguardando',
-        // CORREÇÃO DE LÓGICA: Resetamos campos de controle para novo ciclo da régua
         mensagem_personalizada: null,
         ultimo_gatilho: null
       }));
@@ -203,15 +207,14 @@ export default function RecebiveisPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <header className="mb-10 flex justify-between items-end">
-        <div>
+        <div className="text-left">
           <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-2">
             Módulo de <span className="text-blue-600">Recebíveis</span>
           </h1>
-          <p className="text-slate-500 font-medium">Gestão de Inadimplência e Lembretes • AC Odontologia</p>
+          <p className="text-slate-500 font-medium text-left">Gestão de Inadimplência e Lembretes • AC Odontologia</p>
         </div>
       </header>
 
-      {/* Seção Didática: Instruções de Exportação */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
         <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 shadow-sm text-left">
           <h3 className="font-black text-blue-800 mb-4 flex items-center gap-2 uppercase tracking-wider text-xs">
@@ -238,16 +241,15 @@ export default function RecebiveisPage() {
         </div>
       </section>
 
-      {/* Seção de Uploads */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
         <div className={`relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200 hover:border-blue-400'} hover:cursor-grab active:cursor-grabbing`}>
           <div className="flex items-center gap-4">
             <div className={`p-3 rounded-2xl ${fileStates.finance.loaded ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
               <FileText size={28} />
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-bold text-slate-700 mb-1">Planilha Financeira</label>
-              <p className="text-xs text-slate-400 truncate">{fileStates.finance.name || 'Clique para selecionar o arquivo'}</p>
+            <div className="flex-1 text-left">
+              <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Planilha Financeira</label>
+              <p className="text-xs text-slate-400 truncate text-left">{fileStates.finance.name || 'Clique para selecionar o arquivo'}</p>
               <input type="file" accept=".xlsx" onChange={handleFinanceUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
             {fileStates.finance.loaded && <CheckCircle2 className="text-blue-500" size={24} />}
@@ -260,8 +262,8 @@ export default function RecebiveisPage() {
               <Users size={28} />
             </div>
             <div className="flex-1 text-left">
-              <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Lista de Pacientes</label>
-              <p className="text-xs text-slate-400 truncate text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
+              <label className="block text-sm font-bold text-slate-700 mb-1 text-left text-left">Lista de Pacientes</label>
+              <p className="text-xs text-slate-400 truncate text-left text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
               <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
             {fileStates.patients.loaded && <CheckCircle2 className="text-emerald-500" size={24} />}
@@ -269,7 +271,6 @@ export default function RecebiveisPage() {
         </div>
       </section>
 
-      {/* Ações Principais */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
         <button 
           onClick={handlePrepareTable} 
@@ -279,33 +280,31 @@ export default function RecebiveisPage() {
           Gerar Lista Filtrada
         </button>
         
-        {combinedData.length > 0 && (
-          <>
-            <button 
-              onClick={handleCopyToClipboard} 
-              className="bg-amber-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-amber-600 transition-all flex items-center gap-2 shadow-lg hover:cursor-grab"
-            >
-              <Copy size={20} /> Copiar WhatsApp
-            </button>
-            <button 
-              onClick={handleFinalSync} 
-              disabled={isSyncing}
-              className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 hover:cursor-grab"
-            >
-              {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : <CloudUpload size={20} />}
-              {isSyncing ? 'Sincronizando...' : 'Enviar para Cloud'}
-            </button>
-          </>
-        )}
+        {/* BOTÃO DE LIMPEZA DA BASE (Substituindo o Copy WhatsApp) */}
+        <button 
+          onClick={handleClearDatabase} 
+          disabled={isClearing}
+          className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95 hover:cursor-grab"
+        >
+          {isClearing ? <RefreshCw className="animate-spin" size={20} /> : <DatabaseZap size={20} />}
+          {isClearing ? 'Limpando...' : 'Limpar a Base'}
+        </button>
+
+        <button 
+          onClick={handleFinalSync} 
+          disabled={isSyncing || combinedData.length === 0}
+          className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 hover:cursor-grab disabled:bg-slate-100 disabled:text-slate-300 disabled:shadow-none"
+        >
+          {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : <CloudUpload size={20} />}
+          {isSyncing ? 'Sincronizando...' : 'Enviar para Cloud'}
+        </button>
       </div>
 
-      {/* Barra de Status */}
       <div className="flex items-center gap-3 mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left">
         <AlertCircle size={18} className="text-blue-500" />
         <p className="text-sm font-semibold text-slate-600 text-left">{status}</p>
       </div>
 
-      {/* Tabela de Revisão */}
       {combinedData.length > 0 && (
         <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12 text-left">
           <div className="overflow-x-auto text-left">
@@ -321,8 +320,8 @@ export default function RecebiveisPage() {
               <tbody className="divide-y divide-slate-50 text-left">
                 {combinedData.map((item) => (
                   <tr key={item.cpf} className="group hover:bg-blue-50/30 transition-colors text-left">
-                    <td className="p-6 text-left">
-                      <div className="font-bold text-slate-800 text-left">{item.nome}</div>
+                    <td className="p-6 text-left text-slate-900">
+                      <div className="font-bold text-left">{item.nome}</div>
                       <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf}</div>
                     </td>
                     <td className="p-6 text-center">
