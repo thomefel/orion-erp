@@ -18,7 +18,7 @@ export default function RecebiveisPage() {
   const [financeData, setFinanceData] = useState<any[]>([]);
   const [patientsData, setPatientsData] = useState<Record<string, string>>({});
   const [combinedData, setCombinedData] = useState<any[]>([]);
-  const [fullSyncData, setFullSyncData] = useState<any[]>([]); // NOVA BASE COMPLETA PARA SYNC
+  const [fullSyncData, setFullSyncData] = useState<any[]>([]); 
   const [status, setStatus] = useState('Aguardando arquivos para iniciar a operação...');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -46,14 +46,17 @@ export default function RecebiveisPage() {
     return `${year}-${month}-${day}`;
   };
 
+  // 🛡️ LÓGICA DE COMPARAÇÃO BLINDADA: APENAS O DIA (UTC)
   const getDebtStatus = (vencimentoStr: any) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const dueDate = parseBrazilianDate(vencimentoStr);
     if (!dueDate) return { label: '', color: '', show: false };
-    dueDate.setHours(0, 0, 0, 0);
 
-    const diffTime = today.getTime() - dueDate.getTime();
+    // Converte vencimento e hoje para UTC Meia-Noite para ignorar horas/minutos
+    const vencUTC = Date.UTC(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+    const agora = new Date();
+    const hojeUTC = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
+
+    const diffTime = hojeUTC - vencUTC;
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays > 0) {
@@ -78,7 +81,7 @@ export default function RecebiveisPage() {
         String(row.A).trim() === 'Receita' && String(row.J).trim() === 'Pendente'
       ).map((row: any) => ({
         nome: row.C,
-        cpf: String(row.D).replace(/\D/g, ''),
+        cpf: String(row.D || '').replace(/\D/g, ''),
         vencimento: row.F,
         valor: row.H
       }));
@@ -100,7 +103,7 @@ export default function RecebiveisPage() {
       const data: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 'A' });
       const contactsMap: Record<string, string> = {};
       data.forEach((row) => {
-        const cpf = String(row.D).replace(/\D/g, '');
+        const cpf = String(row.D || '').replace(/\D/g, '');
         if (cpf) contactsMap[cpf] = formatPhone(row.E);
       });
       setPatientsData(contactsMap);
@@ -118,29 +121,30 @@ export default function RecebiveisPage() {
     const aggregated: Record<string, any> = {};
 
     financeData.forEach(item => {
-      if (!aggregated[item.cpf]) {
-        aggregated[item.cpf] = { ...item, valorTotal: Number(item.valor) };
+      // 🛡️ CORREÇÃO DE AGREGAÇÃO: Se não tiver CPF, usa o nome para evitar sobreposição
+      const chaveUnica = item.cpf && item.cpf !== '' ? item.cpf : `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`;
+
+      if (!aggregated[chaveUnica]) {
+        aggregated[chaveUnica] = { ...item, valorTotal: Number(item.valor) };
       } else {
-        aggregated[item.cpf].valorTotal += Number(item.valor);
-        const currentVenc = parseBrazilianDate(aggregated[item.cpf].vencimento);
+        aggregated[chaveUnica].valorTotal += Number(item.valor);
+        const currentVenc = parseBrazilianDate(aggregated[chaveUnica].vencimento);
         const nextVenc = parseBrazilianDate(item.vencimento);
         if (nextVenc && currentVenc && nextVenc < currentVenc) {
-            aggregated[item.cpf].vencimento = item.vencimento;
+            aggregated[chaveUnica].vencimento = item.vencimento;
         }
       }
     });
 
-    const merged = Object.values(aggregated).map(divida => ({
+    const merged = Object.values(aggregated).map((divida: any) => ({
       ...divida,
       valor: divida.valorTotal,
       celular: patientsData[divida.cpf] || 'NÃO ENCONTRADO',
       statusInfo: getDebtStatus(divida.vencimento)
     }));
 
-    // SALVAMOS A BASE COMPLETA PARA SINCRONIZAÇÃO
     setFullSyncData(merged);
 
-    // FILTRAMOS APENAS PARA VISUALIZAÇÃO NA TABELA
     const allowedStatuses = ['D-2', 'D-0', 'D+1', 'D+3', 'D+5', 'D+10', 'D+15'];
     const filtered = merged.filter(item => allowedStatuses.includes(item.statusInfo.label));
 
@@ -148,10 +152,9 @@ export default function RecebiveisPage() {
     setStatus(`Base de ${merged.length} devedores pronta. Visualização filtrada para ${filtered.length} ações prioritárias.`);
   };
 
-  const handleDeleteRow = (cpf: string) => {
-    // Remove de ambas as bases para manter consistência se o usuário excluir manualmente
-    setCombinedData(prev => prev.filter(item => item.cpf !== cpf));
-    setFullSyncData(prev => prev.filter(item => item.cpf !== cpf));
+  const handleDeleteRow = (chave: string) => {
+    setCombinedData(prev => prev.filter(item => item.cpf !== chave && `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}` !== chave));
+    setFullSyncData(prev => prev.filter(item => item.cpf !== chave && `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}` !== chave));
   };
 
   const handleClearDatabase = async () => {
@@ -172,13 +175,13 @@ export default function RecebiveisPage() {
   };
 
   const handleFinalSync = async () => {
-    if (fullSyncData.length === 0) return; // AGORA USA A BASE COMPLETA
+    if (fullSyncData.length === 0) return;
     setIsSyncing(true);
     setStatus(`Sincronizando base completa de ${fullSyncData.length} pacientes...`);
     
     try {
       const payload = fullSyncData.map(item => ({
-        cpf: item.cpf,
+        cpf: item.cpf || `N/A-${item.nome.substring(0,5)}`, // Fallback para o Supabase aceitar o registro
         nome: item.nome,
         valor_pendente: item.valor,
         data_vencimento: formatToISODate(item.vencimento),
@@ -203,12 +206,12 @@ export default function RecebiveisPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <header className="mb-10 flex justify-between items-end">
+      <header className="mb-10 flex justify-between items-end text-left">
         <div className="text-left text-slate-900">
-          <h1 className="text-4xl font-black tracking-tight mb-2 text-left">
-            Módulo de <span className="text-blue-600">Recebíveis</span>
+          <h1 className="text-4xl font-black tracking-tight mb-2 text-left italic uppercase">
+            Orion <span className="text-blue-600 not-italic">Receivables</span>
           </h1>
-          <p className="text-slate-500 font-medium text-left">Sincronização Total de Dados • AC Odontologia</p>
+          <p className="text-slate-500 font-medium text-left">Consistência Total e Precisão de Dados • AC Odontologia</p>
         </div>
       </header>
 
@@ -239,7 +242,7 @@ export default function RecebiveisPage() {
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
-        <div className={`relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200 hover:border-blue-400'} hover:cursor-grab active:cursor-grabbing text-left`}>
+        <div className={`relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200 hover:border-blue-400'} text-left`}>
           <div className="flex items-center gap-4 text-left">
             <div className={`p-3 rounded-2xl ${fileStates.finance.loaded ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
               <FileText size={28} />
@@ -253,12 +256,12 @@ export default function RecebiveisPage() {
           </div>
         </div>
 
-        <div className={`relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed ${fileStates.patients.loaded ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 hover:border-emerald-400'} hover:cursor-grab active:cursor-grabbing text-left`}>
+        <div className={`relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed ${fileStates.patients.loaded ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 hover:border-emerald-400'} text-left`}>
           <div className="flex items-center gap-4 text-left">
             <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
               <Users size={28} />
             </div>
-            <div className="flex-1 text-left">
+            <div className="flex-1 text-left text-left">
               <label className="block text-sm font-bold text-slate-700 mb-1 text-left text-left">Lista de Pacientes</label>
               <p className="text-xs text-slate-400 truncate text-left text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
               <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
@@ -269,34 +272,20 @@ export default function RecebiveisPage() {
       </section>
 
       <div className="flex flex-col md:flex-row gap-4 mb-8 text-left">
-        <button 
-          onClick={handlePrepareTable} 
-          disabled={!fileStates.finance.loaded || !fileStates.patients.loaded}
-          className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 hover:cursor-grab"
-        >
+        <button onClick={handlePrepareTable} disabled={!fileStates.finance.loaded || !fileStates.patients.loaded} className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
           Analisar Dados
         </button>
-        
-        <button 
-          onClick={handleClearDatabase} 
-          disabled={isClearing}
-          className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95 hover:cursor-grab"
-        >
+        <button onClick={handleClearDatabase} disabled={isClearing} className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95">
           {isClearing ? <RefreshCw className="animate-spin" size={20} /> : <DatabaseZap size={20} />}
           {isClearing ? 'Limpando...' : 'Limpar Nuvem'}
         </button>
-
-        <button 
-          onClick={handleFinalSync} 
-          disabled={isSyncing || fullSyncData.length === 0}
-          className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 hover:cursor-grab disabled:bg-slate-100 disabled:text-slate-300 disabled:shadow-none"
-        >
+        <button onClick={handleFinalSync} disabled={isSyncing || fullSyncData.length === 0} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 disabled:bg-slate-100 disabled:text-slate-300">
           {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : <CloudUpload size={20} />}
           {isSyncing ? 'Sincronizando...' : 'Enviar Tudo p/ Cloud'}
         </button>
       </div>
 
-      <div className="flex items-center gap-3 mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left text-left">
+      <div className="flex items-center gap-3 mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left">
         <AlertCircle size={18} className="text-blue-500" />
         <p className="text-sm font-semibold text-slate-600 text-left">{status}</p>
       </div>
@@ -307,18 +296,18 @@ export default function RecebiveisPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-400">
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Prioridades (Ações do Dia)</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Paciente (Prioridades do Dia)</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Gatilho</th>
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left text-left">Detalhes</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Detalhes do Débito</th>
                   <th className="p-4 text-[11px] font-black uppercase tracking-wider text-center">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-left text-left">
                 {combinedData.map((item) => (
-                  <tr key={item.cpf} className="group hover:bg-blue-50/30 transition-colors text-left text-left">
+                  <tr key={item.cpf || `nome-${item.nome}`} className="group hover:bg-blue-50/30 transition-colors text-left text-left">
                     <td className="p-6 text-left">
-                      <div className="font-bold text-left text-slate-900">{item.nome}</div>
-                      <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf}</div>
+                      <div className="font-bold text-left text-slate-900 uppercase">{item.nome}</div>
+                      <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf || 'CPF NÃO CADASTRADO'}</div>
                     </td>
                     <td className="p-6 text-center">
                       <span className={`px-4 py-1.5 rounded-full text-xs font-black border ${item.statusInfo?.color}`}>
@@ -326,17 +315,14 @@ export default function RecebiveisPage() {
                       </span>
                     </td>
                     <td className="p-6 text-left text-left">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg w-fit group-hover:bg-white transition-colors text-left text-left">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg w-fit group-hover:bg-white transition-colors text-left">
                         <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                         {item.celular}
                       </div>
-                      <div className="text-xs font-bold text-slate-500 mt-1 pl-1 text-left text-left text-left">Vencimento Original: {item.vencimento} • R$ {item.valor.toFixed(2)}</div>
+                      <div className="text-xs font-bold text-slate-500 mt-1 pl-1 text-left">Vencimento Original: {item.vencimento} • R$ {item.valor.toFixed(2)}</div>
                     </td>
                     <td className="p-4 text-center">
-                      <button 
-                        onClick={() => handleDeleteRow(item.cpf)} 
-                        className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all hover:cursor-grab active:cursor-grabbing"
-                      >
+                      <button onClick={() => handleDeleteRow(item.cpf || `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all">
                         <Trash2 size={20} />
                       </button>
                     </td>

@@ -31,7 +31,6 @@ export default function EnviosPage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [filaQueue, setFilaQueue] = useState<any[]>([]);
 
-  // NOVOS ESTADOS PARA CUSTOMIZAÇÃO
   const [customDate, setCustomDate] = useState<string>('');
   const [customGatilho, setCustomGatilho] = useState<number>(-2);
 
@@ -42,13 +41,24 @@ export default function EnviosPage() {
     setLogs(prev => [{ msg: `[${new Date().toLocaleTimeString()}] ${msg}`, type }, ...prev]);
   };
 
+  // LÓGICA DE COMPARAÇÃO CORRIGIDA: APENAS O DIA, IGNORANDO HORAS E FUSO
   const calcularDiferencaDias = (dataVencimento: string) => {
     if (!dataVencimento) return 0;
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const parts = dataVencimento.split('-');
-    const venc = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    venc.setHours(0, 0, 0, 0);
-    return Math.round((hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // 1. Sanitização: Extrai apenas YYYY-MM-DD da string, mesmo que venha com hora/timezone do banco
+    const dataLimpa = dataVencimento.split('T')[0].split(' ')[0];
+    const [ano, mes, dia] = dataLimpa.split('-').map(Number);
+    
+    // 2. Cria data de vencimento em UTC (Meia Noite)
+    const vencUTC = Date.UTC(ano, mes - 1, dia);
+    
+    // 3. Cria data de hoje em UTC (Meia Noite)
+    const agora = new Date();
+    const hojeUTC = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
+
+    // 4. Calcula a diferença absoluta em dias
+    const diffTime = hojeUTC - vencUTC;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
   useEffect(() => { fetchFila(); }, []);
@@ -69,7 +79,6 @@ export default function EnviosPage() {
     setLoading(false);
   }
 
-  // NOVA FUNÇÃO: BUSCA CUSTOMIZADA
   async function fetchCustomEnvios() {
     if (!customDate) {
         addLog("Selecione uma data para a busca customizada.", "error");
@@ -85,7 +94,6 @@ export default function EnviosPage() {
         .neq('status_cobranca', 'descartado');
 
     if (data) {
-        // Forçamos a diferença de dias para o gatilho escolhido pelo usuário para que o script acompanhe a escolha
         const customizados = data.map(item => ({
             ...item,
             _forceDiff: customGatilho
@@ -100,10 +108,11 @@ export default function EnviosPage() {
     if (draftMessages[item.cpf] !== undefined) return draftMessages[item.cpf];
     if (item.mensagem_personalizada) return item.mensagem_personalizada;
     
-    // Se for um item de busca customizada, usamos o gatilho forçado, senão o calculado
     const diff = item._forceDiff !== undefined ? item._forceDiff : calcularDiferencaDias(item.data_vencimento);
     
-    const parts = item.data_vencimento.split('-');
+    // Sanitização adicional para exibição de data no script
+    const dataLimpa = item.data_vencimento.split('T')[0].split(' ')[0];
+    const parts = dataLimpa.split('-');
     const dataFmt = `${parts[2]}/${parts[1]}/${parts[0]}`;
     const nome = item.nome.split(' ')[0];
     const script = SCRIPTS_COBRANCA[diff] || SCRIPTS_COBRANCA[15];
@@ -220,7 +229,7 @@ export default function EnviosPage() {
       <header className="flex justify-between items-center mb-12">
         <div className="text-left text-slate-900">
           <h1 className="text-4xl font-black tracking-tighter italic text-left">ORION <span className="text-blue-600 not-italic">COMMAND</span></h1>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] text-left text-left">Custom Delivery Engine v1.7.7</p>
+          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] text-left text-left">Date-Only Precision v1.7.9</p>
         </div>
         <div className="flex gap-4">
           {!isAutopilotoActive ? (
@@ -238,7 +247,6 @@ export default function EnviosPage() {
         </div>
       </header>
 
-      {/* PAINEL DE CUSTOMIZAÇÃO (NOVO) */}
       <div className="bg-white border border-slate-100 p-6 rounded-[32px] mb-8 shadow-sm flex flex-col md:flex-row items-end gap-6 animate-in fade-in slide-in-from-top-4">
           <div className="flex-1 w-full text-left">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -251,14 +259,14 @@ export default function EnviosPage() {
                   className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
               />
           </div>
-          <div className="flex-1 w-full text-left text-left">
+          <div className="flex-1 w-full text-left">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 text-left">
-                  <MessageSquare size={12} className="text-blue-600 text-left" /> Mensagem Customizada (Gatilho)
+                  <MessageSquare size={12} className="text-blue-600" /> Mensagem Customizada (Gatilho)
               </label>
               <select 
                   value={customGatilho}
                   onChange={(e) => setCustomGatilho(Number(e.target.value))}
-                  className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-left"
+                  className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
               >
                   <option value={-2}>D-2 (Lembrete Prévio)</option>
                   <option value={0}>D-0 (Vence Hoje)</option>
@@ -281,7 +289,7 @@ export default function EnviosPage() {
           {fila.length === 0 && !loading ? (
             <div className="bg-white rounded-[32px] p-24 text-center border border-slate-100 shadow-sm">
                 <CheckCircle2 size={48} className="mx-auto mb-4 text-emerald-400" />
-                <p className="font-black text-slate-400 uppercase text-xs tracking-widest text-center text-center">Nenhuma pendência encontrada.</p>
+                <p className="font-black text-slate-400 uppercase text-xs tracking-widest text-center">Nenhuma pendência encontrada.</p>
             </div>
           ) : (
             fila.map((item) => (
@@ -289,9 +297,9 @@ export default function EnviosPage() {
                 <div className="p-6 flex items-center justify-between cursor-pointer" onClick={() => setExpandedCpf(expandedCpf === item.cpf ? null : item.cpf)}>
                   <div className="flex items-center gap-4 text-left">
                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 font-black text-xs">{item.nome.charAt(0)}</div>
-                    <div className="text-left text-left text-left">
-                      <div className="font-black text-slate-900 text-sm uppercase text-left text-left text-left">{item.nome}</div>
-                      <div className="text-[10px] font-mono text-slate-400 text-left text-left text-left">{item.celular}</div>
+                    <div className="text-left">
+                      <div className="font-black text-slate-900 text-sm uppercase">{item.nome}</div>
+                      <div className="text-[10px] font-mono text-slate-400">{item.celular}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
@@ -345,19 +353,19 @@ export default function EnviosPage() {
           <div className="bg-slate-900 rounded-[32px] p-8 shadow-2xl sticky top-24 border border-slate-800 h-[600px] flex flex-col">
             <div className="flex items-center gap-3 text-blue-400 mb-8 border-b border-slate-800 pb-6 text-left">
               <Terminal size={20} />
-              <span className="font-black text-xs uppercase tracking-widest italic text-left text-left">Log Operacional</span>
+              <span className="font-black text-xs uppercase tracking-widest italic text-left">Log Operacional</span>
             </div>
             {isAutopilotoActive && (
               <div className="mb-8 p-6 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-center">
-                <div className="text-blue-400 mb-2 font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 text-center text-center">
+                <div className="text-blue-400 mb-2 font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 text-center">
                   <Clock size={12} /> Próximo em
                 </div>
-                <div className="text-3xl font-black text-white text-center text-center">{Math.floor(countdown! / 60)}:{(countdown! % 60).toString().padStart(2, '0')}</div>
+                <div className="text-3xl font-black text-white text-center">{Math.floor(countdown! / 60)}:{(countdown! % 60).toString().padStart(2, '0')}</div>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto space-y-4 font-mono text-[10px] scrollbar-hide text-left text-left text-left text-left text-left">
+            <div className="flex-1 overflow-y-auto space-y-4 font-mono text-[10px] scrollbar-hide text-left">
               {logs.map((log, i) => (
-                <div key={i} className={`p-4 rounded-2xl border text-left text-left ${log.type === 'success' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' : log.type === 'error' ? 'bg-red-500/5 border-red-500/20 text-red-400' : 'bg-slate-800/40 border-slate-700 text-slate-400'}`}>{log.msg}</div>
+                <div key={i} className={`p-4 rounded-2xl border text-left ${log.type === 'success' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' : log.type === 'error' ? 'bg-red-500/5 border-red-500/20 text-red-400' : 'bg-slate-800/40 border-slate-700 text-slate-400'}`}>{log.msg}</div>
               ))}
             </div>
           </div>
