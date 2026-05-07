@@ -139,14 +139,6 @@ export default function FiscalPage() {
         </div>
         
         <div className="flex items-center gap-4">
-          <button 
-            onClick={loadFromCloud}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 font-bold text-sm rounded-xl hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <RefreshCcw size={18} className={`text-blue-600 ${isLoadingCloud ? 'animate-spin' : ''}`} />
-            Sincronizar Nuvem
-          </button>
-
           <div className="flex bg-slate-200 p-1 rounded-xl">
             <button 
               onClick={() => setViewMode('local')} 
