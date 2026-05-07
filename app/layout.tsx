@@ -1,7 +1,7 @@
 // app/layout.tsx
 import './globals.css';
 import Link from 'next/link';
-import { LayoutDashboard, Receipt, Send } from 'lucide-react';
+import { LayoutDashboard, Receipt, Send, FileText } from 'lucide-react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,6 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </Link>
               <Link href="/envios" className="flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors">
                 <Send size={18} /> Controle de Envios
+              </Link>
+              {/* Novo Módulo Adicionado */}
+              <Link href="/fiscal" className="flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-violet-600 transition-colors">
+                <FileText size={18} /> Fiscal
               </Link>
             </div>
           </div>
