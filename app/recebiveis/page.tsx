@@ -46,12 +46,10 @@ export default function RecebiveisPage() {
     return `${year}-${month}-${day}`;
   };
 
-  // 🛡️ LÓGICA DE COMPARAÇÃO BLINDADA: APENAS O DIA (UTC)
   const getDebtStatus = (vencimentoStr: any) => {
     const dueDate = parseBrazilianDate(vencimentoStr);
     if (!dueDate) return { label: '', color: '', show: false };
 
-    // Converte vencimento e hoje para UTC Meia-Noite para ignorar horas/minutos
     const vencUTC = Date.UTC(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
     const agora = new Date();
     const hojeUTC = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
@@ -121,7 +119,6 @@ export default function RecebiveisPage() {
     const aggregated: Record<string, any> = {};
 
     financeData.forEach(item => {
-      // 🛡️ CORREÇÃO DE AGREGAÇÃO: Se não tiver CPF, usa o nome para evitar sobreposição
       const chaveUnica = item.cpf && item.cpf !== '' ? item.cpf : `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`;
 
       if (!aggregated[chaveUnica]) {
@@ -181,7 +178,7 @@ export default function RecebiveisPage() {
     
     try {
       const payload = fullSyncData.map(item => ({
-        cpf: item.cpf || `N/A-${item.nome.substring(0,5)}`, // Fallback para o Supabase aceitar o registro
+        cpf: item.cpf || `N/A-${item.nome.substring(0,5)}`,
         nome: item.nome,
         valor_pendente: item.valor,
         data_vencimento: formatToISODate(item.vencimento),
@@ -261,9 +258,9 @@ export default function RecebiveisPage() {
             <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
               <Users size={28} />
             </div>
-            <div className="flex-1 text-left text-left">
-              <label className="block text-sm font-bold text-slate-700 mb-1 text-left text-left">Lista de Pacientes</label>
-              <p className="text-xs text-slate-400 truncate text-left text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
+            <div className="flex-1 text-left">
+              <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Lista de Pacientes</label>
+              <p className="text-xs text-slate-400 truncate text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
               <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
             {fileStates.patients.loaded && <CheckCircle2 className="text-emerald-500" size={24} />}
@@ -272,14 +269,26 @@ export default function RecebiveisPage() {
       </section>
 
       <div className="flex flex-col md:flex-row gap-4 mb-8 text-left">
-        <button onClick={handlePrepareTable} disabled={!fileStates.finance.loaded || !fileStates.patients.loaded} className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+        <button 
+          onClick={handlePrepareTable} 
+          disabled={!fileStates.finance.loaded || !fileStates.patients.loaded} 
+          className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+        >
           Analisar Dados
         </button>
-        <button onClick={handleClearDatabase} disabled={isClearing} className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95">
+        <button 
+          onClick={handleClearDatabase} 
+          disabled={isClearing} 
+          className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95 cursor-pointer"
+        >
           {isClearing ? <RefreshCw className="animate-spin" size={20} /> : <DatabaseZap size={20} />}
           {isClearing ? 'Limpando...' : 'Limpar Nuvem'}
         </button>
-        <button onClick={handleFinalSync} disabled={isSyncing || fullSyncData.length === 0} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 disabled:bg-slate-100 disabled:text-slate-300">
+        <button 
+          onClick={handleFinalSync} 
+          disabled={isSyncing || fullSyncData.length === 0} 
+          className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 disabled:bg-slate-100 disabled:text-slate-300 cursor-pointer"
+        >
           {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : <CloudUpload size={20} />}
           {isSyncing ? 'Sincronizando...' : 'Enviar Tudo p/ Cloud'}
         </button>
@@ -291,7 +300,7 @@ export default function RecebiveisPage() {
       </div>
 
       {combinedData.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12 text-left text-left">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12 text-left">
           <div className="overflow-x-auto text-left">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -302,9 +311,9 @@ export default function RecebiveisPage() {
                   <th className="p-4 text-[11px] font-black uppercase tracking-wider text-center">Ação</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50 text-left text-left">
+              <tbody className="divide-y divide-slate-50 text-left">
                 {combinedData.map((item) => (
-                  <tr key={item.cpf || `nome-${item.nome}`} className="group hover:bg-blue-50/30 transition-colors text-left text-left">
+                  <tr key={item.cpf || `nome-${item.nome}`} className="group hover:bg-blue-50/30 transition-colors text-left">
                     <td className="p-6 text-left">
                       <div className="font-bold text-left text-slate-900 uppercase">{item.nome}</div>
                       <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf || 'CPF NÃO CADASTRADO'}</div>
@@ -314,7 +323,7 @@ export default function RecebiveisPage() {
                         {item.statusInfo?.label}
                       </span>
                     </td>
-                    <td className="p-6 text-left text-left">
+                    <td className="p-6 text-left">
                       <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg w-fit group-hover:bg-white transition-colors text-left">
                         <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                         {item.celular}
@@ -322,7 +331,10 @@ export default function RecebiveisPage() {
                       <div className="text-xs font-bold text-slate-500 mt-1 pl-1 text-left">Vencimento Original: {item.vencimento} • R$ {item.valor.toFixed(2)}</div>
                     </td>
                     <td className="p-4 text-center">
-                      <button onClick={() => handleDeleteRow(item.cpf || `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all">
+                      <button 
+                        onClick={() => handleDeleteRow(item.cpf || `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`)} 
+                        className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all cursor-pointer"
+                      >
                         <Trash2 size={20} />
                       </button>
                     </td>

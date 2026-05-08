@@ -229,19 +229,19 @@ export default function EnviosPage() {
       <header className="flex justify-between items-center mb-12">
         <div className="text-left text-slate-900">
           <h1 className="text-4xl font-black tracking-tighter italic text-left">ORION <span className="text-blue-600 not-italic">COMMAND</span></h1>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] text-left text-left">Date-Only Precision v1.7.9</p>
+          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] text-left">Date-Only Precision v1.7.9</p>
         </div>
         <div className="flex gap-4">
           {!isAutopilotoActive ? (
-            <button onClick={iniciarAutopiloto} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-slate-800 shadow-xl transition-all">
+            <button onClick={iniciarAutopiloto} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-slate-800 shadow-xl transition-all cursor-pointer">
               <Play size={16} fill="white" /> Enviar Tudo
             </button>
           ) : (
-            <button onClick={() => setIsAutopilotoActive(false)} className="bg-red-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-red-600 shadow-xl transition-all">
+            <button onClick={() => setIsAutopilotoActive(false)} className="bg-red-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-red-600 shadow-xl transition-all cursor-pointer">
               <Pause size={16} fill="white" /> Pausar
             </button>
           )}
-          <button onClick={fetchFila} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-lg hover:bg-slate-50 transition-all">
+          <button onClick={fetchFila} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-lg hover:bg-slate-50 transition-all cursor-pointer">
             <RefreshCw className={loading ? 'animate-spin' : ''} size={20} />
           </button>
         </div>
@@ -278,7 +278,7 @@ export default function EnviosPage() {
           </div>
           <button 
             onClick={fetchCustomEnvios}
-            className="w-full md:w-auto bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-3 active:scale-95"
+            className="w-full md:w-auto bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-3 active:scale-95 cursor-pointer"
           >
             Customizar Envios
           </button>
@@ -325,7 +325,7 @@ export default function EnviosPage() {
                         <button 
                           onClick={() => salvarMensagemManual(item.cpf)}
                           disabled={draftMessages[item.cpf] === undefined || isSaving === item.cpf}
-                          className="absolute right-4 top-4 p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-0"
+                          className="absolute right-4 top-4 p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-0 cursor-pointer"
                         >
                           {isSaving === item.cpf ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                         </button>
@@ -335,8 +335,8 @@ export default function EnviosPage() {
                           <Info size={12} /> Clique no disquete acima para fixar a edição.
                         </div>
                         <div className="flex gap-3">
-                          <button onClick={() => descartarMensagem(item)} className="p-3 border border-slate-200 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all shadow-sm"><Trash2 size={18} /></button>
-                          <button disabled={sendingId === item.cpf} onClick={() => dispararMensagem(item)} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2">
+                          <button onClick={() => descartarMensagem(item)} className="p-3 border border-slate-200 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all shadow-sm cursor-pointer"><Trash2 size={18} /></button>
+                          <button disabled={sendingId === item.cpf} onClick={() => dispararMensagem(item)} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed">
                             {sendingId === item.cpf ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Enviar
                           </button>
                         </div>

@@ -177,7 +177,6 @@ export default function FiscalPage() {
     reader.readAsArrayBuffer(file);
   };
 
-  // Upload de Planilha Formatada (Recuperado da versão anterior)
   const handleFormattedUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -201,7 +200,7 @@ export default function FiscalPage() {
       setLocalData(prev => getValidatedData([...prev, ...extracted]));
     };
     reader.readAsArrayBuffer(file);
-    event.target.value = ''; // Reset funcional do input
+    event.target.value = '';
   };
 
   const handleInterUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -405,8 +404,18 @@ export default function FiscalPage() {
           <p className="text-slate-500 font-medium mt-1">Extração de Extratos e Gestão de Notas</p>
         </div>
         <div className="flex bg-slate-200 p-1 rounded-xl">
-          <button onClick={() => setViewMode('local')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${viewMode === 'local' ? 'bg-white shadow text-violet-600' : 'text-slate-500'}`}>Preparação</button>
-          <button onClick={() => setViewMode('cloud')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${viewMode === 'cloud' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Fila RPA</button>
+          <button 
+            onClick={() => setViewMode('local')} 
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'local' ? 'bg-white shadow text-violet-600' : 'text-slate-50'}`}
+          >
+            Preparação
+          </button>
+          <button 
+            onClick={() => setViewMode('cloud')} 
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'cloud' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+          >
+            Fila RPA
+          </button>
         </div>
       </header>
 
@@ -440,16 +449,33 @@ export default function FiscalPage() {
               <input type="text" value={aliquota} onChange={e => setAliquota(e.target.value)} placeholder="0.00" className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none" />
             </div>
             <div className="flex gap-2">
-              <button onClick={handleSaveDraft} disabled={isSavingDraft} className="bg-slate-100 text-slate-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all"><Save size={20} /> Salvar Rascunho</button>
-              <button onClick={handleClearDraft} className="bg-red-50 text-red-500 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-red-100 border border-red-100"><XCircle size={20} /> Apagar Rascunho</button>
-              <button onClick={handleSendToCloud} disabled={!canSend} className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${canSend ? 'bg-violet-600 text-white shadow-lg' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}><Cloud size={20} /> Enviar p/ Emissão</button>
+              <button 
+                onClick={handleSaveDraft} 
+                disabled={isSavingDraft} 
+                className="bg-slate-100 text-slate-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                <Save size={20} /> Salvar Rascunho
+              </button>
+              <button 
+                onClick={handleClearDraft} 
+                className="bg-red-50 text-red-500 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-red-100 border border-red-100 cursor-pointer"
+              >
+                <XCircle size={20} /> Apagar Rascunho
+              </button>
+              <button 
+                onClick={handleSendToCloud} 
+                disabled={!canSend} 
+                className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${canSend ? 'bg-violet-600 text-white shadow-lg cursor-pointer' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+              >
+                <Cloud size={20} /> Enviar p/ Emissão
+              </button>
             </div>
           </div>
 
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Listagem de Emissão</h3>
-               <button onClick={handleManualValidate} className="text-[10px] font-black text-violet-600 uppercase flex items-center gap-1 hover:underline">
+               <button onClick={handleManualValidate} className="text-[10px] font-black text-violet-600 uppercase flex items-center gap-1 hover:underline cursor-pointer">
                  <RefreshCw size={14} /> Re-verificar tudo
                </button>
             </div>
@@ -487,18 +513,17 @@ export default function FiscalPage() {
                       <input type="number" value={item.valor_servico} onChange={e => handleUpdateField(item.id_temp, 'valor_servico', Number(e.target.value))} placeholder="0.00" className="bg-transparent font-bold w-24 outline-none" />
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => setLocalData(prev => prev.filter(i => i.id_temp !== item.id_temp))} className="text-slate-300 hover:text-red-500"><Trash2 size={18} /></button>
+                      <button onClick={() => setLocalData(prev => prev.filter(i => i.id_temp !== item.id_temp))} className="text-slate-300 hover:text-red-500 cursor-pointer"><Trash2 size={18} /></button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="p-4 bg-slate-50/50 flex justify-center gap-6 border-t border-slate-100">
-              <button onClick={handleAddManual} className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-violet-600 uppercase tracking-tighter">
+              <button onClick={handleAddManual} className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-violet-600 uppercase tracking-tighter cursor-pointer">
                 <Plus size={16} /> Incluir nova entrada manual
               </button>
 
-              {/* RECUPERADO: Botão de Importação de Planilha Formatada */}
               <label htmlFor="formatted-xlsx" className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-emerald-600 uppercase tracking-tighter cursor-pointer transition-all">
                 <FileSpreadsheet size={16} /> Importar Planilha Formatada
               </label>
@@ -512,7 +537,7 @@ export default function FiscalPage() {
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
             <h3 className="font-bold text-slate-900">Fila de Emissão na Nuvem</h3>
-            <button onClick={clearCloud} className="text-xs font-bold text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1"><Trash2 size={14} /> Limpar Tudo</button>
+            <button onClick={clearCloud} className="text-xs font-bold text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1 cursor-pointer"><Trash2 size={14} /> Limpar Tudo</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -541,6 +566,18 @@ export default function FiscalPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-12">
+            <div className="text-right">
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Total de Notas</span>
+              <span className="text-2xl font-black text-slate-900">{cloudData.length}</span>
+            </div>
+            <div className="text-right">
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Total</span>
+              <span className="text-2xl font-black text-violet-600">
+                R$ {cloudData.reduce((acc, row) => acc + (Number(row.valor_servico) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
       )}
