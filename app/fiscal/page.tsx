@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/app/lib/supabase';
 import { 
   Trash2, 
@@ -14,7 +14,9 @@ import {
   Users, 
   Save,
   XCircle,
-  DatabaseZap
+  DatabaseZap,
+  Search,
+  Filter
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -36,9 +38,11 @@ export default function FiscalPage() {
   const [localData, setLocalData] = useState<LocalRecord[]>([]);
   const [cloudData, setCloudData] = useState<any[]>([]);
   
-  // Suporta múltiplos CPFs por nome para detectar homônimos
-  const [patientsMap, setPatientsMap] = useState<Record<string, string[]>>({}); 
+  // Estados de Filtro de Visualização
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'pronto' | 'erro'>('todos');
   
+  const [patientsMap, setPatientsMap] = useState<Record<string, string[]>>({}); 
   const [viewMode, setViewMode] = useState<'local' | 'cloud'>('local');
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = useState(true);
@@ -52,9 +56,9 @@ export default function FiscalPage() {
   const cleanCPF = (cpf: any) => String(cpf || '').replace(/\D/g, '');
   const validateCPF = (cpf: string) => cpf.length === 11;
 
-  // Normaliza nomes para comparação (remove acentos, espaços duplos e padroniza caixa alta)
-  const normalizeName = (name: string) => {
-    return name
+  // Normaliza strings para comparação (remove acentos, espaços duplos e padroniza caixa alta)
+  const normalizeText = (text: string) => {
+    return String(text || '')
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "") 
       .replace(/\s+/g, " ") 
@@ -128,7 +132,6 @@ export default function FiscalPage() {
   const handleClearDraft = async () => {
     if (!confirm('Deseja apagar o rascunho salvo na nuvem?')) return;
     const { error } = await supabase.from('rascunhos_fiscal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    
     if (!error) {
       setLocalData([]);
       setFileStates({
@@ -136,16 +139,10 @@ export default function FiscalPage() {
         inter: { loaded: false, name: '' },
         sicredi: { loaded: false, name: '' }
       });
-      const inputs = ['input-inter', 'input-sicredi', 'xlsx-up', 'formatted-xlsx'];
-      inputs.forEach(id => {
-        const el = document.getElementById(id) as HTMLInputElement;
-        if (el) el.value = '';
-      });
       alert('Rascunho apagado.');
     }
   };
 
-  // Upload de Pacientes
   const handlePatientsUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -154,23 +151,16 @@ export default function FiscalPage() {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const workbook = XLSX.read(data, { type: 'array' });
       const json: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-      
       const mapping: Record<string, string[]> = {};
       json.forEach(row => {
         const nomeRaw = String(row.Paciente || row.Nome || row.A || '').trim();
         const cpfRaw = String(row.Documento || row.CPF || row.D || '').trim();
-        
         if (!nomeRaw) return;
-
-        const nomeNorm = normalizeName(nomeRaw);
+        const nomeNorm = normalizeText(nomeRaw);
         const cpf = cleanCPF(cpfRaw);
-        
         if (!mapping[nomeNorm]) mapping[nomeNorm] = [];
-        if (cpf && !mapping[nomeNorm].includes(cpf)) {
-          mapping[nomeNorm].push(cpf);
-        }
+        if (cpf && !mapping[nomeNorm].includes(cpf)) mapping[nomeNorm].push(cpf);
       });
-      
       setPatientsMap(mapping);
       setFileStates(prev => ({ ...prev, patients: { loaded: true, name: file.name } }));
     };
@@ -180,13 +170,11 @@ export default function FiscalPage() {
   const handleFormattedUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const workbook = XLSX.read(data, { type: 'array' });
       const json: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-
       const extracted: LocalRecord[] = json.map((row: any, index) => ({
         id_temp: `formatted_${Date.now()}_${index}`,
         data_competencia: row.Data || '',
@@ -196,7 +184,6 @@ export default function FiscalPage() {
         origem: 'Planilha Formatada',
         isValid: false,
       }));
-
       setLocalData(prev => getValidatedData([...prev, ...extracted]));
     };
     reader.readAsArrayBuffer(file);
@@ -209,21 +196,25 @@ export default function FiscalPage() {
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
-      const lines = content.split('\n');
-      const extracted: LocalRecord[] = lines.slice(6).map((line, index) => {
+      const lines = content.split(/\r?\n/);
+      const extracted: LocalRecord[] = lines.map((line, index) => {
         const cols = line.split(';');
-        if (cols.length < 5) return null;
-        if (!String(cols[1]).toLowerCase().includes('pix recebido')) return null;
+        if (cols.length < 4) return null;
+        
+        // CORREÇÃO: Usando "RECEBIDO" em vez de "RECEBIMENTO" para garantir captura do Inter
+        const histNorm = normalizeText(String(cols[1]));
+        const isFaturamento = histNorm.includes('RECEBIDO') && (histNorm.includes('PIX') || histNorm.includes('BOLETO'));
+        
+        if (!isFaturamento) return null;
         
         const nomeBruto = String(cols[2]).trim();
-        const nomeNorm = normalizeName(nomeBruto);
+        const nomeNorm = normalizeText(nomeBruto);
+        if (nomeNorm.includes('AC ODONTOLOGIA')) return null;
+
         const valorLimpo = Number(cols[3].replace('.', '').replace(',', '.'));
-        
         const cpfsEncontrados = patientsMap[nomeNorm] || [];
         let cpfFinal = 'NAO ENCONTRADO';
-        if (cpfsEncontrados.length === 1) {
-          cpfFinal = cpfsEncontrados[0];
-        }
+        if (cpfsEncontrados.length === 1) cpfFinal = cpfsEncontrados[0];
 
         return {
           id_temp: `inter_${Date.now()}_${index}`,
@@ -239,56 +230,47 @@ export default function FiscalPage() {
       setLocalData(prev => getValidatedData([...prev, ...extracted]));
       setFileStates(prev => ({ ...prev, inter: { loaded: true, name: file.name } }));
     };
-    reader.readAsText(file, 'ISO-8859-1');
+    reader.readAsText(file, 'UTF-8');
   };
 
   const handleSicrediUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     try {
       const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.mjs',
-        import.meta.url
-      ).toString();
-
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).toString();
       const reader = new FileReader();
       reader.onload = async (e) => {
         const buffer = e.target?.result as ArrayBuffer;
-        const loadingTask = pdfjsLib.getDocument({ data: buffer });
-        const pdf = await loadingTask.promise;
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
         const extracted: LocalRecord[] = [];
-
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
           const items = textContent.items as any[];
           const rowGroups: Record<number, any[]> = {};
-          
           items.forEach(item => {
             const y = Math.round(item.transform[5]);
             if (!rowGroups[y]) rowGroups[y] = [];
             rowGroups[y].push(item);
           });
-
           const sortedY = Object.keys(rowGroups).sort((a, b) => Number(b) - Number(a));
           sortedY.forEach(y => {
             const lineItems = rowGroups[Number(y)].sort((a, b) => a.transform[4] - b.transform[4]);
             const fullLine = lineItems.map(item => item.str).join(' ');
-
             if (fullLine.toUpperCase().includes('RECEBIMENTO PIX')) {
               const dateMatch = fullLine.match(/(\d{2}\/\d{2}\/\d{4})/);
               const valueMatch = fullLine.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
               const descMatch = fullLine.match(/RECEBIMENTO PIX\s+(?:SICREDI\s+)?(\d{11})\s+(.*?)(?:\s+PIX_CRED|PIX_CRE|PIX CRED|\d{9}|$)/i);
-              
               if (dateMatch && valueMatch && descMatch) {
+                const nomeExtraido = descMatch[2].trim().toUpperCase();
+                if (normalizeText(nomeExtraido).includes('AC ODONTOLOGIA')) return;
                 extracted.push({
                   id_temp: `sicredi_${Date.now()}_${extracted.length}`,
                   data_competencia: dateMatch[1],
                   valor_servico: Number(valueMatch[1].replace(/\./g, '').replace(',', '.')),
                   paciente_cpf: descMatch[1],
-                  paciente_nome: descMatch[2].trim().toUpperCase(),
+                  paciente_nome: nomeExtraido,
                   origem: 'Sicredi PDF',
                   isValid: false
                 });
@@ -296,14 +278,11 @@ export default function FiscalPage() {
             }
           });
         }
-        
         setLocalData(prev => getValidatedData([...prev, ...extracted]));
         setFileStates(prev => ({ ...prev, sicredi: { loaded: true, name: file.name } }));
       };
       reader.readAsArrayBuffer(file);
-    } catch (err) {
-      alert("Erro ao carregar motor de PDF.");
-    }
+    } catch (err) { alert("Erro ao carregar motor de PDF."); }
   };
 
   const handleAddManual = () => {
@@ -323,9 +302,7 @@ export default function FiscalPage() {
     setLocalData(prev => prev.map(item => {
       if (item.id_temp === id) {
         let finalValue = value;
-        if (field === 'data_competencia') {
-          finalValue = maskDate(value);
-        }
+        if (field === 'data_competencia') finalValue = maskDate(value);
         const updated = { ...item, [field]: finalValue };
         return getValidatedData([updated])[0];
       }
@@ -348,15 +325,12 @@ export default function FiscalPage() {
       }));
       await supabase.from('rascunhos_fiscal').insert(payload);
       alert('Rascunho salvo!');
-    } catch (err) {
-      alert('Erro ao salvar rascunho.');
-    }
+    } catch (err) { alert('Erro ao salvar rascunho.'); }
     setIsSavingDraft(false);
   };
 
   const handleSendToCloud = async () => {
     if (localData.length === 0) return;
-    
     const payload = localData.map(item => ({
       data_competencia: toISO(item.data_competencia),
       valor_servico: item.valor_servico,
@@ -365,16 +339,13 @@ export default function FiscalPage() {
       aliquota_simples: Number(aliquota),
       status: 'pendente'
     }));
-
     const { error: insertError } = await supabase.from('lotes_emissao_nfe').insert(payload);
     if (!insertError) {
       await supabase.from('rascunhos_fiscal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       alert('Enviado para o RPA com sucesso!');
       setLocalData([]);
       setViewMode('cloud');
-    } else {
-      alert('Erro ao enviar: ' + insertError.message);
-    }
+    } else { alert('Erro ao enviar: ' + insertError.message); }
   };
 
   const loadFromCloud = useCallback(async () => {
@@ -394,6 +365,24 @@ export default function FiscalPage() {
 
   const canSend = localData.length > 0 && localData.every(i => i.isValid);
 
+  // --- LÓGICA DE FILTRAGEM DE VISUALIZAÇÃO (CORRIGIDA) ---
+  const filteredLocalData = useMemo(() => {
+    const term = normalizeText(searchTerm);
+    return localData.filter(item => {
+      // 1. Filtro de Texto (Nome ou CPF) - Se termo vazio, retorna true (mostra tudo)
+      const matchesSearch = !term || 
+        normalizeText(item.paciente_nome || '').startsWith(term) || 
+        item.paciente_cpf.toUpperCase().startsWith(term);
+
+      // 2. Filtro de Status
+      const matchesStatus = statusFilter === 'todos' || 
+        (statusFilter === 'pronto' && item.isValid) || 
+        (statusFilter === 'erro' && !item.isValid);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [localData, searchTerm, statusFilter]);
+
   return (
     <div className="max-w-7xl mx-auto space-y-8">
       <header className="flex justify-between items-end">
@@ -404,18 +393,8 @@ export default function FiscalPage() {
           <p className="text-slate-500 font-medium mt-1">Extração de Extratos e Gestão de Notas</p>
         </div>
         <div className="flex bg-slate-200 p-1 rounded-xl">
-          <button 
-            onClick={() => setViewMode('local')} 
-            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'local' ? 'bg-white shadow text-violet-600' : 'text-slate-50'}`}
-          >
-            Preparação
-          </button>
-          <button 
-            onClick={() => setViewMode('cloud')} 
-            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'cloud' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
-          >
-            Fila RPA
-          </button>
+          <button onClick={() => setViewMode('local')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'local' ? 'bg-white shadow text-violet-600' : 'text-slate-500'}`}>Preparação</button>
+          <button onClick={() => setViewMode('cloud')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'cloud' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Fila RPA</button>
         </div>
       </header>
 
@@ -442,48 +421,56 @@ export default function FiscalPage() {
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
             <div className="flex-1 min-w-[200px]">
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Código do Serviço</label>
-              <input type="text" value={codigoServico} onChange={e => setCodigoServico(e.target.value)} placeholder="00.00.00" className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none" />
+              <input type="text" value={codigoServico} onChange={e => setCodigoServico(e.target.value)} className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none" />
             </div>
             <div className="flex-1 min-w-[200px]">
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Alíquota %</label>
-              <input type="text" value={aliquota} onChange={e => setAliquota(e.target.value)} placeholder="0.00" className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none" />
+              <input type="text" value={aliquota} onChange={e => setAliquota(e.target.value)} className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none" />
             </div>
             <div className="flex gap-2">
-              <button 
-                onClick={handleSaveDraft} 
-                disabled={isSavingDraft} 
-                className="bg-slate-100 text-slate-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                <Save size={20} /> Salvar Rascunho
-              </button>
-              <button 
-                onClick={handleClearDraft} 
-                className="bg-red-50 text-red-500 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-red-100 border border-red-100 cursor-pointer"
-              >
-                <XCircle size={20} /> Apagar Rascunho
-              </button>
-              <button 
-                onClick={handleSendToCloud} 
-                disabled={!canSend} 
-                className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${canSend ? 'bg-violet-600 text-white shadow-lg cursor-pointer' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
-              >
-                <Cloud size={20} /> Enviar p/ Emissão
-              </button>
+              <button onClick={handleSaveDraft} disabled={isSavingDraft} className="bg-slate-100 text-slate-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all cursor-pointer"><Save size={20} /> Salvar Rascunho</button>
+              <button onClick={handleClearDraft} className="bg-red-50 text-red-500 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-red-100 border border-red-100 cursor-pointer"><XCircle size={20} /> Apagar Rascunho</button>
+              <button onClick={handleSendToCloud} disabled={!canSend} className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${canSend ? 'bg-violet-600 text-white shadow-lg cursor-pointer' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}><Cloud size={20} /> Enviar p/ Emissão</button>
             </div>
           </div>
 
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Listagem de Emissão</h3>
-               <button onClick={handleManualValidate} className="text-[10px] font-black text-violet-600 uppercase flex items-center gap-1 hover:underline cursor-pointer">
-                 <RefreshCw size={14} /> Re-verificar tudo
-               </button>
+               <button onClick={handleManualValidate} className="text-[10px] font-black text-violet-600 uppercase flex items-center gap-1 hover:underline cursor-pointer"><RefreshCw size={14} /> Re-verificar tudo</button>
             </div>
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
-                  <th className="px-6 py-4">Origem / Status</th>
-                  <th className="px-6 py-4">Paciente / CPF</th>
+                  <th className="px-6 py-4">
+                    <div className="flex flex-col gap-2">
+                      <span>Origem / Status</span>
+                      <select 
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className="bg-white border border-slate-200 rounded p-1 text-[9px] outline-none cursor-pointer font-bold text-slate-600"
+                      >
+                        <option value="todos">Mostrar Todos</option>
+                        <option value="pronto">Somente Prontos</option>
+                        <option value="erro">Somente Erros</option>
+                      </select>
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 min-w-[300px]">
+                    <div className="flex flex-col gap-2">
+                      <span>Paciente / CPF</span>
+                      <div className="relative">
+                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="text" 
+                          placeholder="Filtrar por nome ou CPF (inicia com)..." 
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-violet-500/20"
+                        />
+                      </div>
+                    </div>
+                  </th>
                   <th className="px-6 py-4">Data</th>
                   <th className="px-6 py-4">Valor (R$)</th>
                   <th className="px-6 py-4 text-right">Ações</th>
@@ -492,41 +479,30 @@ export default function FiscalPage() {
               <tbody className="text-sm">
                 {isLoadingDraft ? (
                   <tr><td colSpan={5} className="p-12 text-center text-slate-400 italic">Carregando rascunhos...</td></tr>
-                ) : localData.length === 0 ? (
-                  <tr><td colSpan={5} className="p-12 text-center text-slate-400 italic">Nenhuma nota encontrada.</td></tr>
-                ) : localData.map((item) => (
+                ) : filteredLocalData.length === 0 ? (
+                  <tr><td colSpan={5} className="p-12 text-center text-slate-400 italic">Nenhum registro encontrado.</td></tr>
+                ) : filteredLocalData.map((item) => (
                   <tr key={item.id_temp} className="border-b border-slate-50 hover:bg-slate-50/50 transition-all">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-300 uppercase">{item.origem}</span>
-                        {item.isValid ? <span className="text-emerald-600 font-bold">PRONTO</span> : <span className="text-red-500 font-bold" title={item.errorMsg}>ERRO</span>}
+                        {item.isValid ? <span className="text-emerald-600 font-bold uppercase text-[10px]">PRONTO</span> : <span className="text-red-500 font-bold uppercase text-[10px]" title={item.errorMsg}>ERRO</span>}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-xs font-black text-slate-900 mb-1 uppercase">{item.paciente_nome}</div>
-                      <input type="text" value={item.paciente_cpf} onChange={e => handleUpdateField(item.id_temp, 'paciente_cpf', cleanCPF(e.target.value))} placeholder="00000000000" className={`bg-slate-50 px-2 py-1 rounded border w-full text-xs font-mono ${item.paciente_cpf === 'NAO ENCONTRADO' ? 'border-red-300 text-red-500 font-black' : 'border-slate-100'}`} />
+                      <input type="text" value={item.paciente_cpf} onChange={e => handleUpdateField(item.id_temp, 'paciente_cpf', cleanCPF(e.target.value))} className={`bg-slate-50 px-2 py-1 rounded border w-full text-xs font-mono ${item.paciente_cpf === 'NAO ENCONTRADO' ? 'border-red-300 text-red-500 font-black' : 'border-slate-100'}`} />
                     </td>
-                    <td className="px-6 py-4">
-                      <input type="text" value={item.data_competencia} onChange={e => handleUpdateField(item.id_temp, 'data_competencia', e.target.value)} placeholder="DD/MM/AAAA" className="bg-transparent border-b border-dashed w-24 outline-none" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <input type="number" value={item.valor_servico} onChange={e => handleUpdateField(item.id_temp, 'valor_servico', Number(e.target.value))} placeholder="0.00" className="bg-transparent font-bold w-24 outline-none" />
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button onClick={() => setLocalData(prev => prev.filter(i => i.id_temp !== item.id_temp))} className="text-slate-300 hover:text-red-500 cursor-pointer"><Trash2 size={18} /></button>
-                    </td>
+                    <td className="px-6 py-4"><input type="text" value={item.data_competencia} onChange={e => handleUpdateField(item.id_temp, 'data_competencia', e.target.value)} className="bg-transparent border-b border-dashed w-24 outline-none" /></td>
+                    <td className="px-6 py-4"><input type="number" value={item.valor_servico} onChange={e => handleUpdateField(item.id_temp, 'valor_servico', Number(e.target.value))} className="bg-transparent font-bold w-24 outline-none" /></td>
+                    <td className="px-6 py-4 text-right"><button onClick={() => setLocalData(prev => prev.filter(i => i.id_temp !== item.id_temp))} className="text-slate-300 hover:text-red-500 cursor-pointer transition-colors"><Trash2 size={18} /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="p-4 bg-slate-50/50 flex justify-center gap-6 border-t border-slate-100">
-              <button onClick={handleAddManual} className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-violet-600 uppercase tracking-tighter cursor-pointer">
-                <Plus size={16} /> Incluir nova entrada manual
-              </button>
-
-              <label htmlFor="formatted-xlsx" className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-emerald-600 uppercase tracking-tighter cursor-pointer transition-all">
-                <FileSpreadsheet size={16} /> Importar Planilha Formatada
-              </label>
+              <button onClick={handleAddManual} className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-violet-600 uppercase tracking-tighter cursor-pointer"><Plus size={16} /> Incluir nova entrada manual</button>
+              <label htmlFor="formatted-xlsx" className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-emerald-600 uppercase tracking-tighter cursor-pointer"><FileSpreadsheet size={16} /> Importar Planilha Formatada</label>
               <input id="formatted-xlsx" type="file" className="hidden" accept=".xlsx" onChange={handleFormattedUpload} />
             </div>
           </div>
@@ -543,10 +519,10 @@ export default function FiscalPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="bg-white text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">CPF</th>
-                  <th className="px-6 py-4">Data</th>
-                  <th className="px-6 py-4">Valor</th>
+                  <th className="px-6 py-4 text-center">Status</th>
+                  <th className="px-6 py-4 font-bold">CPF</th>
+                  <th className="px-6 py-4 text-left">Data</th>
+                  <th className="px-6 py-4 text-center">Valor</th>
                   <th className="px-6 py-4">Serviço/Alíquota</th>
                 </tr>
               </thead>
@@ -555,12 +531,10 @@ export default function FiscalPage() {
                   <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium">Fila vazia.</td></tr>
                 ) : cloudData.map((row) => (
                   <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/30">
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase ${row.status === 'pendente' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{row.status}</span>
-                    </td>
+                    <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase ${row.status === 'pendente' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{row.status}</span></td>
                     <td className="px-6 py-4 font-bold text-slate-700">{row.paciente_cpf}</td>
                     <td className="px-6 py-4 text-slate-500">{fromISO(row.data_competencia)}</td>
-                    <td className="px-6 py-4 font-black text-slate-900">R$ {Number(row.valor_servico).toFixed(2)}</td>
+                    <td className="px-6 py-4 font-black text-slate-900 text-center">R$ {Number(row.valor_servico).toFixed(2)}</td>
                     <td className="px-6 py-4 text-xs text-slate-400 font-medium">{row.codigo_servico} | {row.aliquota_simples}%</td>
                   </tr>
                 ))}
@@ -574,9 +548,7 @@ export default function FiscalPage() {
             </div>
             <div className="text-right">
               <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Total</span>
-              <span className="text-2xl font-black text-violet-600">
-                R$ {cloudData.reduce((acc, row) => acc + (Number(row.valor_servico) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+              <span className="text-2xl font-black text-violet-600">R$ {cloudData.reduce((acc, row) => acc + (Number(row.valor_servico) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
