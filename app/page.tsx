@@ -1,50 +1,83 @@
 // app/page.tsx
 import Link from 'next/link';
-import { Receipt, Send, ArrowRight, FileText } from 'lucide-react';
+import { Receipt, Send, ArrowRight, FileText, History, ShieldCheck, TrendingUp, Zap } from 'lucide-react';
 
 export default function HomePage() {
   return (
-    <div className="max-w-6xl mx-auto text-center mt-20">
-      <h1 className="text-5xl font-black text-slate-900 mb-6">
-        Bem-vindo ao <span className="text-blue-600">Orion</span>
-      </h1>
-      <p className="text-xl text-slate-500 mb-12">Selecione o módulo que deseja operar hoje na AC Odontologia.</p>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <Link href="/recebiveis" className="group p-8 bg-white rounded-3xl shadow-sm border border-slate-200 hover:border-blue-500 transition-all text-left flex flex-col">
-          <div className="bg-blue-50 text-blue-600 p-4 rounded-2xl w-fit mb-6 group-hover:bg-blue-600 group-hover:text-white transition-all">
-            <Receipt size={32} />
-          </div>
-          <h2 className="text-2xl font-bold mb-2 text-slate-900">Recebíveis</h2>
-          <p className="text-slate-500 mb-6 flex-grow">Importe as planilhas do Simples Dental e prepare a régua de cobrança.</p>
-          <div className="flex items-center gap-2 text-blue-600 font-bold">
-            Acessar Módulo <ArrowRight size={18} />
-          </div>
-        </Link>
+    <div className="w-full">
+      {/* Intro Section */}
+      <section className="max-w-7xl mx-auto px-6 py-24 text-center">
+        <h1 className="text-7xl font-black text-slate-900 mb-6 tracking-tighter leading-tight italic uppercase">
+          ORION <span className="text-blue-600 not-italic">AC ODONTOLOGIA</span>
+        </h1>
+        <p className="text-xl text-slate-500 font-medium max-w-2xl mx-auto leading-relaxed uppercase tracking-tighter">
+          Ferramentas de controle financeiro e contábil
+        </p>
+      </section>
 
-        <Link href="/envios" className="group p-8 bg-white rounded-3xl shadow-sm border border-slate-200 hover:border-emerald-500 transition-all text-left flex flex-col">
-          <div className="bg-emerald-50 text-emerald-600 p-4 rounded-2xl w-fit mb-6 group-hover:bg-emerald-600 group-hover:text-white transition-all">
-            <Send size={32} />
+      {/* Seção 1: Recebíveis */}
+      <Link href="/recebiveis" className="group block w-full bg-white border-y border-slate-100 hover:bg-blue-50/30 transition-all duration-500">
+        <div className="max-w-7xl mx-auto px-6 h-[45vh] flex items-center justify-between">
+          <div className="max-w-xl text-left">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic group-hover:text-blue-600 transition-colors">Recebíveis</h2>
+            <p className="text-lg font-bold text-slate-400 mt-4 uppercase tracking-tight">FLUXO DE CAIXA E DEVEDORES</p>
+            <p className="text-slate-500 mt-6 leading-relaxed">
+              Importação inteligente de planilhas do Simples Dental para alimentação do Orion Cloud. Prepare e valide sua base de dados antes de iniciar os disparos de mensagens automatizadas no whatsapp.
+            </p>
           </div>
-          <h2 className="text-2xl font-bold mb-2 text-slate-900">Controle de Envios</h2>
-          <p className="text-slate-500 mb-6 flex-grow">Visualize a fila de mensagens e dispare os lembretes via Evolution-API.</p>
-          <div className="flex items-center gap-2 text-emerald-600 font-bold">
-            Gerenciar Disparos <ArrowRight size={18} />
+          <div className="p-12 bg-slate-50 rounded-[48px] group-hover:bg-blue-600 group-hover:text-white transition-all duration-500 group-hover:rotate-3 shadow-2xl shadow-blue-100">
+            <Receipt size={64} />
           </div>
-        </Link>
+        </div>
+      </Link>
 
-        {/* Novo Card: Módulo Fiscal */}
-        <Link href="/fiscal" className="group p-8 bg-white rounded-3xl shadow-sm border border-slate-200 hover:border-violet-500 transition-all text-left flex flex-col">
-          <div className="bg-violet-50 text-violet-600 p-4 rounded-2xl w-fit mb-6 group-hover:bg-violet-600 group-hover:text-white transition-all">
-            <FileText size={32} />
+      {/* Seção 2: Controle de Envios */}
+      <Link href="/envios" className="group block w-full bg-slate-50/50 border-b border-slate-100 hover:bg-emerald-50/30 transition-all duration-500">
+        <div className="max-w-7xl mx-auto px-6 h-[45vh] flex items-center justify-between flex-row-reverse">
+          <div className="max-w-xl text-left">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic group-hover:text-emerald-600 transition-colors">Controle de Envios</h2>
+            <p className="text-lg font-bold text-slate-400 mt-4 uppercase tracking-tight">DISPARO DE MENSAGENS AUTOMATIZADO</p>
+            <p className="text-slate-500 mt-6 leading-relaxed">
+              Gestão da fila de disparos via Evolution-API. Visualize a régua de cobrança automática (D-2 a D+15) e execute disparos manuais ou em piloto automático.
+            </p>
           </div>
-          <h2 className="text-2xl font-bold mb-2 text-slate-900">Emissão Fiscal</h2>
-          <p className="text-slate-500 mb-6 flex-grow">Valide planilhas e gerencie a fila de emissão automatizada de NFS-e.</p>
-          <div className="flex items-center gap-2 text-violet-600 font-bold">
-            Acessar Módulo <ArrowRight size={18} />
+          <div className="p-12 bg-white rounded-[48px] group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500 group-hover:-rotate-3 shadow-2xl shadow-emerald-100">
+            <Send size={64} />
           </div>
-        </Link>
-      </div>
+        </div>
+      </Link>
+
+      {/* Seção 3: Negociação de Dívidas */}
+      <Link href="/negociacoes" className="group block w-full bg-white border-b border-slate-100 hover:bg-amber-50/30 transition-all duration-500">
+        <div className="max-w-7xl mx-auto px-6 h-[45vh] flex items-center justify-between">
+          <div className="max-w-xl text-left text-left">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic group-hover:text-amber-600 transition-colors">Negociação de Dívidas</h2>
+            <p className="text-lg font-bold text-slate-400 mt-4 uppercase tracking-tight text-left">RECUPERAÇÃO DE ATIVOS</p>
+            <p className="text-slate-500 mt-6 leading-relaxed text-left">
+              Listagem de inadimplências acima de 60 dias. Agregação de passivo por CPF e roadmap com as ações de negociação extra judicial e judicial
+            </p>
+          </div>
+          <div className="p-12 bg-slate-50 rounded-[48px] group-hover:bg-amber-600 group-hover:text-white transition-all duration-500 group-hover:scale-110 shadow-2xl shadow-amber-100">
+            <History size={64} />
+          </div>
+        </div>
+      </Link>
+
+      {/* Seção 4: Emissão Fiscal */}
+      <Link href="/fiscal" className="group block w-full bg-slate-50/50 border-b border-slate-100 hover:bg-violet-50/30 transition-all duration-500">
+        <div className="max-w-7xl mx-auto px-6 h-[45vh] flex items-center justify-between flex-row-reverse text-left">
+          <div className="max-w-xl text-left">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic group-hover:text-violet-600 transition-colors">Emissão Fiscal</h2>
+            <p className="text-lg font-bold text-slate-400 mt-4 uppercase tracking-tight text-left">Automação de NFS-e</p>
+            <p className="text-slate-500 mt-6 leading-relaxed text-left">
+              Validação de registros fiscais e fila de emissão automatizada. Garanta a conformidade tributária da clínica com processos de envio em lote e monitoramento de status.
+            </p>
+          </div>
+          <div className="p-12 bg-white rounded-[48px] group-hover:bg-violet-600 group-hover:text-white transition-all duration-500 shadow-2xl shadow-violet-100">
+            <FileText size={64} />
+          </div>
+        </div>
+      </Link>
     </div>
   );
 }

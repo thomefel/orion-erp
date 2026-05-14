@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { 
@@ -28,6 +28,37 @@ export default function RecebiveisPage() {
     patients: { loaded: false, name: '' }
   });
 
+  // --- CARREGAMENTO INICIAL (PADRONIZAÇÃO RLS) ---
+  useEffect(() => {
+    fetchFromSupabase();
+  }, []);
+
+  async function fetchFromSupabase() {
+    setStatus('Buscando base de devedores na nuvem...');
+    const { data } = await supabase
+      .from('devedores_ativos')
+      .select('*')
+      .neq('status_cobranca', 'descartado');
+
+    if (data && data.length > 0) {
+      const formatado = data.map(item => ({
+        cpf: item.cpf,
+        nome: item.nome,
+        valor: item.valor_pendente,
+        vencimento: item.data_vencimento.split('-').reverse().join('/'),
+        celular: item.celular,
+        statusInfo: getDebtStatus(item.data_vencimento.split('-').reverse().join('/'))
+      }));
+      setFullSyncData(formatado);
+      
+      const allowedStatuses = ['D-2', 'D-0', 'D+1', 'D+3', 'D+5', 'D+10', 'D+15'];
+      const filtered = formatado.filter(item => allowedStatuses.includes(item.statusInfo.label));
+      
+      setCombinedData(filtered);
+      setStatus(`${data.length} registros carregados da nuvem.`);
+    }
+  }
+
   const formatPhone = (phone: any) => {
     let cleaned = String(phone).replace(/\D/g, ''); 
     if (cleaned.length === 11 && cleaned.startsWith('0')) cleaned = cleaned.substring(1);
@@ -42,6 +73,7 @@ export default function RecebiveisPage() {
   };
 
   const formatToISODate = (dateStr: string) => {
+    if (!dateStr.includes('/')) return dateStr;
     const [day, month, year] = dateStr.split('/');
     return `${year}-${month}-${day}`;
   };
@@ -202,7 +234,7 @@ export default function RecebiveisPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto px-6 pt-8 pb-20">
       <header className="mb-10 flex justify-between items-end text-left">
         <div className="text-left text-slate-900">
           <h1 className="text-4xl font-black tracking-tight mb-2 text-left italic uppercase">
@@ -258,9 +290,9 @@ export default function RecebiveisPage() {
             <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
               <Users size={28} />
             </div>
-            <div className="flex-1 text-left">
-              <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Lista de Pacientes</label>
-              <p className="text-xs text-slate-400 truncate text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
+            <div className="flex-1 text-left text-left">
+              <label className="block text-sm font-bold text-slate-700 mb-1 text-left text-left">Lista de Pacientes</label>
+              <p className="text-xs text-slate-400 truncate text-left text-left">{fileStates.patients.name || 'Clique para selecionar o arquivo'}</p>
               <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
             {fileStates.patients.loaded && <CheckCircle2 className="text-emerald-500" size={24} />}
@@ -269,26 +301,14 @@ export default function RecebiveisPage() {
       </section>
 
       <div className="flex flex-col md:flex-row gap-4 mb-8 text-left">
-        <button 
-          onClick={handlePrepareTable} 
-          disabled={!fileStates.finance.loaded || !fileStates.patients.loaded} 
-          className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
-        >
+        <button onClick={handlePrepareTable} disabled={!fileStates.finance.loaded || !fileStates.patients.loaded} className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 cursor-pointer">
           Analisar Dados
         </button>
-        <button 
-          onClick={handleClearDatabase} 
-          disabled={isClearing} 
-          className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95 cursor-pointer"
-        >
+        <button onClick={handleClearDatabase} disabled={isClearing} className="bg-red-500 text-white py-4 px-8 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg active:scale-95 cursor-pointer">
           {isClearing ? <RefreshCw className="animate-spin" size={20} /> : <DatabaseZap size={20} />}
           {isClearing ? 'Limpando...' : 'Limpar Nuvem'}
         </button>
-        <button 
-          onClick={handleFinalSync} 
-          disabled={isSyncing || fullSyncData.length === 0} 
-          className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 disabled:bg-slate-100 disabled:text-slate-300 cursor-pointer"
-        >
+        <button onClick={handleFinalSync} disabled={isSyncing || fullSyncData.length === 0} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-blue-200 shadow-xl flex items-center justify-center gap-2 active:scale-95 disabled:bg-slate-100 disabled:text-slate-300 cursor-pointer">
           {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : <CloudUpload size={20} />}
           {isSyncing ? 'Sincronizando...' : 'Enviar Tudo p/ Cloud'}
         </button>
@@ -300,7 +320,7 @@ export default function RecebiveisPage() {
       </div>
 
       {combinedData.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12 text-left">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mb-12 text-left text-left">
           <div className="overflow-x-auto text-left">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -311,11 +331,11 @@ export default function RecebiveisPage() {
                   <th className="p-4 text-[11px] font-black uppercase tracking-wider text-center">Ação</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50 text-left">
+              <tbody className="divide-y divide-slate-50 text-left text-left">
                 {combinedData.map((item) => (
-                  <tr key={item.cpf || `nome-${item.nome}`} className="group hover:bg-blue-50/30 transition-colors text-left">
-                    <td className="p-6 text-left">
-                      <div className="font-bold text-left text-slate-900 uppercase">{item.nome}</div>
+                  <tr key={item.cpf || `nome-${item.nome}`} className="group hover:bg-blue-50/30 transition-colors text-left text-left">
+                    <td className="p-6 text-left text-slate-900">
+                      <div className="font-bold text-left uppercase">{item.nome}</div>
                       <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf || 'CPF NÃO CADASTRADO'}</div>
                     </td>
                     <td className="p-6 text-center">
@@ -323,7 +343,7 @@ export default function RecebiveisPage() {
                         {item.statusInfo?.label}
                       </span>
                     </td>
-                    <td className="p-6 text-left">
+                    <td className="p-6 text-left text-left">
                       <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg w-fit group-hover:bg-white transition-colors text-left">
                         <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                         {item.celular}
@@ -331,10 +351,7 @@ export default function RecebiveisPage() {
                       <div className="text-xs font-bold text-slate-500 mt-1 pl-1 text-left">Vencimento Original: {item.vencimento} • R$ {item.valor.toFixed(2)}</div>
                     </td>
                     <td className="p-4 text-center">
-                      <button 
-                        onClick={() => handleDeleteRow(item.cpf || `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`)} 
-                        className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all cursor-pointer"
-                      >
+                      <button onClick={() => handleDeleteRow(item.cpf || `nome-${item.nome.replace(/\s+/g, '').toLowerCase()}`)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all cursor-pointer">
                         <Trash2 size={20} />
                       </button>
                     </td>

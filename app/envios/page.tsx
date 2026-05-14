@@ -41,22 +41,13 @@ export default function EnviosPage() {
     setLogs(prev => [{ msg: `[${new Date().toLocaleTimeString()}] ${msg}`, type }, ...prev]);
   };
 
-  // LÓGICA DE COMPARAÇÃO CORRIGIDA: APENAS O DIA, IGNORANDO HORAS E FUSO
   const calcularDiferencaDias = (dataVencimento: string) => {
     if (!dataVencimento) return 0;
-    
-    // 1. Sanitização: Extrai apenas YYYY-MM-DD da string, mesmo que venha com hora/timezone do banco
     const dataLimpa = dataVencimento.split('T')[0].split(' ')[0];
     const [ano, mes, dia] = dataLimpa.split('-').map(Number);
-    
-    // 2. Cria data de vencimento em UTC (Meia Noite)
     const vencUTC = Date.UTC(ano, mes - 1, dia);
-    
-    // 3. Cria data de hoje em UTC (Meia Noite)
     const agora = new Date();
     const hojeUTC = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
-
-    // 4. Calcula a diferença absoluta em dias
     const diffTime = hojeUTC - vencUTC;
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
@@ -110,7 +101,6 @@ export default function EnviosPage() {
     
     const diff = item._forceDiff !== undefined ? item._forceDiff : calcularDiferencaDias(item.data_vencimento);
     
-    // Sanitização adicional para exibição de data no script
     const dataLimpa = item.data_vencimento.split('T')[0].split(' ')[0];
     const parts = dataLimpa.split('-');
     const dataFmt = `${parts[2]}/${parts[1]}/${parts[0]}`;
@@ -225,11 +215,13 @@ export default function EnviosPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 pb-20 pt-8">
+    <div className="max-w-7xl mx-auto px-6 pt-8 pb-20 text-left">
       <header className="flex justify-between items-center mb-12">
         <div className="text-left text-slate-900">
-          <h1 className="text-4xl font-black tracking-tighter italic text-left">ORION <span className="text-blue-600 not-italic">COMMAND</span></h1>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] text-left">Date-Only Precision v1.7.9</p>
+          <h1 className="text-4xl font-black tracking-tight mb-2 text-left italic uppercase">
+            Orion <span className="text-blue-600 not-italic">Envios</span>
+          </h1>
+          <p className="text-slate-500 font-medium text-left">Gestão de disparos de mensagens</p>
         </div>
         <div className="flex gap-4">
           {!isAutopilotoActive ? (
@@ -248,7 +240,7 @@ export default function EnviosPage() {
       </header>
 
       <div className="bg-white border border-slate-100 p-6 rounded-[32px] mb-8 shadow-sm flex flex-col md:flex-row items-end gap-6 animate-in fade-in slide-in-from-top-4">
-          <div className="flex-1 w-full text-left">
+          <div className="flex-1 w-full text-left text-left">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                   <Calendar size={12} className="text-blue-600" /> Data Customizada (Vencimento)
               </label>
@@ -260,7 +252,7 @@ export default function EnviosPage() {
               />
           </div>
           <div className="flex-1 w-full text-left">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 text-left">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                   <MessageSquare size={12} className="text-blue-600" /> Mensagem Customizada (Gatilho)
               </label>
               <select 
@@ -298,7 +290,7 @@ export default function EnviosPage() {
                   <div className="flex items-center gap-4 text-left">
                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 font-black text-xs">{item.nome.charAt(0)}</div>
                     <div className="text-left">
-                      <div className="font-black text-slate-900 text-sm uppercase">{item.nome}</div>
+                      <div className="font-bold text-slate-900 uppercase text-sm">{item.nome}</div>
                       <div className="text-[10px] font-mono text-slate-400">{item.celular}</div>
                     </div>
                   </div>
@@ -325,7 +317,7 @@ export default function EnviosPage() {
                         <button 
                           onClick={() => salvarMensagemManual(item.cpf)}
                           disabled={draftMessages[item.cpf] === undefined || isSaving === item.cpf}
-                          className="absolute right-4 top-4 p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-0 cursor-pointer"
+                          className="absolute right-4 top-4 p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-0"
                         >
                           {isSaving === item.cpf ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                         </button>
@@ -336,7 +328,7 @@ export default function EnviosPage() {
                         </div>
                         <div className="flex gap-3">
                           <button onClick={() => descartarMensagem(item)} className="p-3 border border-slate-200 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all shadow-sm cursor-pointer"><Trash2 size={18} /></button>
-                          <button disabled={sendingId === item.cpf} onClick={() => dispararMensagem(item)} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed">
+                          <button disabled={sendingId === item.cpf} onClick={() => dispararMensagem(item)} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2 cursor-pointer">
                             {sendingId === item.cpf ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Enviar
                           </button>
                         </div>
