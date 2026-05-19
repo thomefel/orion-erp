@@ -16,8 +16,15 @@ import {
   FileText,
   Scale,
   Trash2,
-  XCircle
+  XCircle,
+  BookOpen,
+  ShieldAlert,
+  Info // Importação adicionada para corrigir o Runtime TypeError
 } from 'lucide-react';
+
+const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL || '';
+const EVO_INSTANCE = process.env.NEXT_PUBLIC_EVOLUTION_INSTANCE || '';
+const EVO_TOKEN = process.env.NEXT_PUBLIC_EVOLUTION_TOKEN || '';
 
 export default function DetalheNegociacao() {
   const { cpf } = useParams();
@@ -30,6 +37,12 @@ export default function DetalheNegociacao() {
   const [valorEditavel, setValorEditavel] = useState(0);
   const [msgAmigavel, setMsgAmigavel] = useState("");
   const [propostaDesconto, setPropostaDesconto] = useState(0);
+
+  // Controle dos motores de PDF e dos Pop-ups Modais
+  const [statusLoadingPDF, setStatusLoadingPDF] = useState(false);
+  const [statusLoadingConfissaoPDF, setStatusLoadingConfissaoPDF] = useState(false);
+  const [isProtestModalOpen, setIsProtestModalOpen] = useState(false);
+  const [isNegativacaoModalOpen, setIsNegativacaoModalOpen] = useState(false);
 
   useEffect(() => {
     fetchDevedor();
@@ -85,10 +98,197 @@ export default function DetalheNegociacao() {
 
   const enviarWhatsApp = async (texto: string) => {
     alert("Simulação: Mensagem enviada para o paciente!");
-    if (!devedor.notificacao_amigavel) toggleFlag('notificacao_amigavel', false);
+    if (!devedor?.notificacao_amigavel) toggleFlag('notificacao_amigavel', false);
   };
 
-  if (loading) return <div className="p-20 text-center font-black text-slate-400 animate-pulse uppercase text-[10px] tracking-widest">Carregando Dashboard Tático...</div>;
+  // --- MOTOR DE EMISSÃO DE PDF JURÍDICO: NOTIFICAÇÃO EXTRAJUDICIAL ---
+  const generateNotificationPDF = async () => {
+    try {
+      setStatusLoadingPDF(true);
+      const jsPDFLib = (window as any).jspdf?.jsPDF || await new Promise((resolve, reject) => {
+        if ((window as any).jspdf?.jsPDF) return resolve((window as any).jspdf.jsPDF);
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        script.onload = () => resolve((window as any).jspdf.jsPDF);
+        script.onerror = (err) => reject(err);
+        document.body.appendChild(script);
+      });
+
+      const doc = new jsPDFLib();
+      doc.setFont("helvetica", "normal");
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL DE CONSTITUIÇÃO EM MORA", 105, 30, { align: "center" });
+      
+      doc.setLineWidth(0.5);
+      doc.line(20, 35, 190, 35);
+      
+      doc.setFontSize(10);
+      doc.text("NOTIFICANTE:", 20, 50);
+      doc.setFont("helvetica", "normal");
+      doc.text("AC ODONTOLOGIA, pessoa jurídica estabelecida na Comarca de Itapema/SC.", 52, 50);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("NOTIFICADO(A):", 20, 58);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${devedor?.nome || 'Paciente Inexistente'}`, 52, 58);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("CPF/MF Nº:", 20, 66);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${devedor?.cpf || 'Não informado'}`, 52, 66);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("Prezado(a) Senhor(a),", 20, 82);
+      
+      doc.setFont("helvetica", "normal");
+      const dataFmt = devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : '';
+      const valorFmt = valorEditavel.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      
+      const textoCorpo = `Por meio deste instrumento formal, servimo-nos da presente via para constituílo(a) oficialmente em MORA, nos estritos termos dos artigos 394, 395 e 397 da Lei nº 10.406/2002 (Código Civil Brasileiro), em virtude do inadimplemento de obrigações financeiras líquidas, certas e exigíveis junto a esta instituição notificante.\n\nConstata-se em nossos registros cadastrais e contábeis a existência de um passivo consolidado no montante total de R$ ${valorFmt}, correspondente a ${devedor?.parcelas_qtd || 0} parcela(s) em aberto decorrente(s) de prestação de serviços odontológicos contratados, cujo vencimento inicial operou-se em ${dataFmt}.\n\nMalgrado os reiterados esforços e tentativas de composição amigável promovidos pelo nosso departamento de conciliação interna, não obtivemos, até a presente data, a devida regularização ou qualquer manifestação plausível para adimplemento do saldo devedor.\n\nDiante do exposto, ASSINÁMOS o prazo improrrogável de 48 (quarenta e oito) horas, a contar do recebimento desta interlocução, para que Vossa Senhoria proceda à liquidação do referido débito ou compareça à nossa sede operacional para formalizar termo de confissão de dívida.\n\nA inércia ou recusa no cumprimento da presente determinação extrajudicial ensejará a imediata adoção de medidas coercitivas legais cabíveis, as quais incluem, mas não se limitam a: (i) protesto público do título perante o Cartório de Registro de Títulos e Documentos da Comarca de Itapema/SC; (ii) inclusão restritiva de seu nome junto aos órgãos de proteção ao crédito (SPC/SERASA); e (iii) propositura de Ação Judicial de Execução ou Cobrança cabível, respondendo o devedor por perdas, danos, juros moratórios, correção monetária e honorários advocatícios sucumbenciais, ex vi do artigo 389 do Código Civil Brasileiro.`;
+      
+      const textLines = doc.splitTextToSize(textoCorpo, 170);
+      doc.text(textLines, 20, 92);
+      
+      const dataAtual = new Date().toLocaleDateString('pt-BR');
+      doc.text(`Itapema/SC, ${dataAtual}.`, 20, 225);
+      
+      doc.line(60, 255, 150, 255);
+      doc.setFont("helvetica", "bold");
+      doc.text("AC ODONTOLOGIA", 105, 260, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.text("Departamento de Recuperação de Ativos", 105, 265, { align: "center" });
+      
+      doc.save(`Notificacao_Extrajudicial_${devedor?.cpf}.pdf`);
+      setStatusLoadingPDF(false);
+      if (!devedor?.notificacao_extrajudicial) toggleFlag('notificacao_extrajudicial', false);
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      setStatusLoadingPDF(false);
+      alert("Falha ao processar o motor de arquivos PDF.");
+    }
+  };
+
+  // --- MOTOR DE EMISSÃO DE PDF JURÍDICO: CONFISSÃO DE DÍVIDA (ART. 784, III, CPC) ---
+  const generateConfissaoPDF = async () => {
+    try {
+      setStatusLoadingConfissaoPDF(true);
+      const jsPDFLib = (window as any).jspdf?.jsPDF || await new Promise((resolve, reject) => {
+        if ((window as any).jspdf?.jsPDF) return resolve((window as any).jspdf.jsPDF);
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        script.onload = () => resolve((window as any).jspdf.jsPDF);
+        script.onerror = (err) => reject(err);
+        document.body.appendChild(script);
+      });
+
+      const doc = new jsPDFLib();
+      doc.setFont("helvetica", "normal");
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("INSTRUMENTO PARTICULAR DE CONFISSÃO E PARCELAMENTO DE DÍVIDA", 105, 25, { align: "center" });
+      doc.setFontSize(10);
+      doc.text("(TÍTULO EXECUTIVO EXTRAJUDICIAL - ART. 784, INCISO III, DO CPC)", 105, 31, { align: "center" });
+      
+      doc.setLineWidth(0.5);
+      doc.line(20, 36, 190, 36);
+      
+      let y = 48;
+      doc.setFont("helvetica", "bold"); doc.text("CREDOR:", 20, y);
+      doc.setFont("helvetica", "normal"); doc.text("AC ODONTOLOGIA, pessoa jurídica estabelecida em Itapema/SC.", 45, y);
+      
+      y += 8;
+      doc.setFont("helvetica", "bold"); doc.text("DEVEDOR(A):", 20, y);
+      doc.setFont("helvetica", "normal"); doc.text(`${devedor?.nome || 'Paciente Inexistente'}`, 45, y);
+      
+      y += 8;
+      doc.setFont("helvetica", "bold"); doc.text("CPF/MF Nº:", 20, y);
+      doc.setFont("helvetica", "normal"); doc.text(`${devedor?.cpf || 'Não informado'}`, 45, y);
+      
+      y += 12;
+      doc.setFont("helvetica", "normal");
+      const valorFmt = valorEditavel.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const dataFmt = devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : '';
+      
+      const textoIntro = `As partes acima qualificadas têm entre si, de maneira justa e contratada, o presente Instrumento Particular de Confissão de Dívida, mediante as cláusulas e condições seguintes, amparadas pelo Art. 784, III do Código de Processo Civil brasileiro e pela torrencial jurisprudência do Egrégio Tribunal de Justiça de Santa Catarina (TJSC):`;
+      let splitIntro = doc.splitTextToSize(textoIntro, 170);
+      doc.text(splitIntro, 20, y);
+      y += (splitIntro.length * 5) + 5;
+      
+      doc.setFont("helvetica", "bold"); doc.text("CLÁUSULA PRIMEIRA - DO RECONHECIMENTO DA DÍVIDA:", 20, y);
+      doc.setFont("helvetica", "normal");
+      y += 6;
+      const c1 = `O(A) DEVEDOR(A) reconhece expressamente, de forma irrevogável e irretratável, que possui uma dívida líquida, certa e exigível perante o CREDOR no valor total de R$ ${valorFmt}, decorrente do inadimplemento de tratamentos odontológicos contratados e executados, cuja inadimplência inicial remonta a ${dataFmt}.`;
+      let splitC1 = doc.splitTextToSize(c1, 170);
+      doc.text(splitC1, 20, y);
+      y += (splitC1.length * 5) + 5;
+      
+      doc.setFont("helvetica", "bold"); doc.text("CLÁUSULA SEGUNDA - DA FORMA DE PAGAMENTO E COMPOSIÇÃO:", 20, y);
+      doc.setFont("helvetica", "normal");
+      y += 6;
+      const c2 = `O valor acima confessado poderá ser liquidado integralmente à vista na assinatura deste termo ou conforme plano de parcelamento anuído entre as partes junto ao departamento de recuperação de ativos da clínica credora. A tolerância do CREDOR quanto a eventual atraso não constituirá novação contratual.`;
+      let splitC2 = doc.splitTextToSize(c2, 170);
+      doc.text(splitC2, 20, y);
+      y += (splitC2.length * 5) + 5;
+
+      if (y > 230) {
+        doc.addPage();
+        y = 25;
+      }
+
+      doc.setFont("helvetica", "bold"); doc.text("CLÁUSULA TERCEIRA - ENCARGOS MORATÓRIOS E VENCIMENTO ANTECIPADO:", 20, y);
+      doc.setFont("helvetica", "normal");
+      y += 6;
+      const c3 = `Em caso de atraso de qualquer parcela pactuada, incidirá multa moratória de 2% (dois por cento) sobre o saldo devedor, juros de mora de 1% (um por cento) ao mês e correção monetária pelo INPC/IBGE. Ademais, o inadimplemento de qualquer parcela ensejará o vencimento antecipado de toda a dívida remanescente, autorizando a execução judicial imediata do título.`;
+      let splitC3 = doc.splitTextToSize(c3, 170);
+      doc.text(splitC3, 20, y);
+      y += (splitC3.length * 5) + 5;
+
+      doc.setFont("helvetica", "bold"); doc.text("CLÁUSULA QUARTA - DA FORÇA EXECUTIVA EXTRAJUDICIAL:", 20, y);
+      doc.setFont("helvetica", "normal");
+      y += 6;
+      const c4 = `Este instrumento é firmado na presença de 02 (duas) testemunhas idôneas, constituindo-se expressamente como TÍTULO EXECUTIVO EXTRAJUDICIAL, apto a embasar Ação de Execução direta perante o Poder Judiciário, nos exatos termos do Artigo 784, inciso III, do Código de Processo Civil. Elegem as partes o Foro da Comarca de Itapema/SC para dirimir controvérsias.`;
+      let splitC4 = doc.splitTextToSize(c4, 170);
+      doc.text(splitC4, 20, y);
+      y += (splitC4.length * 5) + 15;
+
+      if (y > 220) {
+        doc.addPage();
+        y = 25;
+      }
+
+      const dataAtual = new Date().toLocaleDateString('pt-BR');
+      doc.text(`Itapema/SC, ${dataAtual}.`, 20, y);
+      y += 25;
+      
+      doc.line(20, y, 95, y); doc.line(115, y, 190, y);
+      y += 5;
+      doc.setFont("helvetica", "bold");
+      doc.text("AC ODONTOLOGIA (Credor)", 57, y, { align: "center" });
+      doc.text("DEVEDOR(A)", 152, y, { align: "center" });
+      
+      y += 25;
+      doc.line(20, y, 95, y); doc.line(115, y, 190, y);
+      y += 5;
+      doc.setFont("helvetica", "normal");
+      doc.text("Testemunha 1 (Nome/CPF)", 57, y, { align: "center" });
+      doc.text("Testemunha 2 (Nome/CPF)", 152, y, { align: "center" });
+
+      doc.save(`Confissao_Divida_${devedor?.cpf}.pdf`);
+      setStatusLoadingConfissaoPDF(false);
+      if (!devedor?.confissao_assinada) toggleFlag('confissao_assinada', devedor.confissao_assinada);
+    } catch (error) {
+      console.error("Erro ao gerar PDF de confissão:", error);
+      setStatusLoadingConfissaoPDF(false);
+      alert("Falha ao processar o motor de arquivos PDF.");
+    }
+  };
+
+  // Trava estrutural contra renderizações nulas
+  if (loading) return <div className="p-20 text-center font-black text-slate-400 animate-pulse text-left uppercase text-[10px] tracking-widest">Carregando Dashboard Tático...</div>;
+  if (!devedor) return <div className="p-20 text-center font-black text-slate-400 text-left uppercase text-[10px] tracking-widest">Registro não localizado ou inválido na Nuvem.</div>;
 
   return (
     <div className="max-w-7xl mx-auto px-6 pt-8 pb-20 text-left">
@@ -99,7 +299,7 @@ export default function DetalheNegociacao() {
         <h1 className="text-4xl font-black text-slate-900 uppercase italic">
           Gestão de <span className="text-blue-600 not-italic">Acordo</span>
         </h1>
-        <p className="text-slate-500 font-medium mt-1">Roadmap Estratégico de Recuperação • {devedor.nome}</p>
+        <p className="text-slate-500 font-medium mt-1">Roadmap Estratégico de Recuperação • {devedor?.nome}</p>
       </header>
 
       {/* SEÇÃO 1: INFORMAÇÕES DA DÍVIDA */}
@@ -111,16 +311,16 @@ export default function DetalheNegociacao() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 items-end">
           <div className="md:col-span-1">
             <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Paciente</label>
-            <p className="font-bold text-slate-900 uppercase truncate">{devedor.nome}</p>
-            <p className="font-mono text-[11px] text-slate-400 mt-1">{devedor.cpf}</p>
+            <p className="font-bold text-slate-900 uppercase truncate">{devedor?.nome}</p>
+            <p className="font-mono text-[11px] text-slate-400 mt-1">{devedor?.cpf}</p>
           </div>
           
           <div className="md:col-span-1">
             <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Origem do Débito</label>
             <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
-                <Calendar size={14} className="text-slate-300" /> {new Date(devedor.data_divida).toLocaleDateString('pt-BR')}
+                <Calendar size={14} className="text-slate-300" /> {devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : ''}
             </div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 italic">{devedor.parcelas_qtd} parcelas em atraso</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 italic">{devedor?.parcelas_qtd || 0} parcelas em atraso</p>
           </div>
 
           <div className="md:col-span-2 flex items-end gap-4">
@@ -143,13 +343,12 @@ export default function DetalheNegociacao() {
         </div>
       </section>
 
-      {/* SEÇÃO 2: TRILHO DE NEGOCIAÇÃO INTEGRADO */}
+      {/* SEÇÃO 2: TRILHO DE NEGOCIAÇÃO */}
       <section className="bg-white p-12 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden">
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-16 flex items-center gap-2">
           <Gavel size={14} className="text-blue-600" /> Fluxo Cronológico de Recuperação Extrajudicial e Judicial
         </h3>
 
-        {/* RETA DO TRAJETO CONTÍNUA (Estendida até o final do conteúdo) */}
         <div className="absolute left-[71px] top-40 bottom-24 w-px bg-slate-100 z-0"></div>
 
         <div className="space-y-16 relative z-10">
@@ -157,11 +356,11 @@ export default function DetalheNegociacao() {
           {/* 01. ABORDAGEM CONSULTIVA */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.notificacao_amigavel ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.notificacao_amigavel ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">01</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.notificacao_amigavel ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">01</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.notificacao_amigavel ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.notificacao_amigavel ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Abordagem Consultiva</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+75</span>
@@ -176,8 +375,8 @@ export default function DetalheNegociacao() {
                     <button onClick={() => enviarWhatsApp(msgAmigavel)} className="bg-slate-900 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg flex items-center gap-2 cursor-pointer">
                         <Send size={14} /> Enviar Mensagem
                     </button>
-                    <button onClick={() => toggleFlag('notificacao_amigavel', devedor.notificacao_amigavel)} className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
-                        {devedor.notificacao_amigavel ? 'Realizado' : 'Marcar Executado'}
+                    <button onClick={() => toggleFlag('notificacao_amigavel', devedor?.notificacao_amigavel)} className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                        {devedor?.notificacao_amigavel ? 'Realizado' : 'Marcar Executado'}
                     </button>
                 </div>
               </div>
@@ -187,11 +386,11 @@ export default function DetalheNegociacao() {
           {/* 02. PROPOSTA DE ACORDO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.proposta_enviada ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.proposta_enviada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">02</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.proposta_enviada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">02</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.proposta_enviada ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.proposta_enviada ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Proposta de Acordo</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+75</span>
@@ -205,8 +404,8 @@ export default function DetalheNegociacao() {
                     <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Valor Líquido da Proposta</label>
                     <p className="text-xl font-black text-blue-600">R$ {(valorEditavel - propostaDesconto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
                 </div>
-                <button onClick={() => toggleFlag('proposta_enviada', devedor.proposta_enviada)} className={`px-10 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.proposta_enviada ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}>
-                    {devedor.proposta_enviada ? 'Proposta Salva' : 'Registrar Envio'}
+                <button onClick={() => toggleFlag('proposta_enviada', devedor?.proposta_enviada)} className={`px-10 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}>
+                    {devedor?.proposta_enviada ? 'Proposta Salva' : 'Registrar Envio'}
                 </button>
               </div>
             </div>
@@ -215,21 +414,26 @@ export default function DetalheNegociacao() {
           {/* 03. NOTIFICAÇÃO EXTRAJUDICIAL */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-blue-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.notificacao_extrajudicial ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">03</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-blue-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.notificacao_extrajudicial ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">03</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.notificacao_extrajudicial ? 'bg-blue-50/30 border-blue-100' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.notificacao_extrajudicial ? 'bg-blue-50/30 border-blue-100' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Notificação Extrajudicial</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+75 a D+90</span>
               </div>
               <div className="flex gap-4">
-                <button className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer">
-                  <FileText size={18} className="text-blue-600" /> Emitir PDF de Notificação Formal
+                <button 
+                  onClick={generateNotificationPDF}
+                  disabled={statusLoadingPDF}
+                  className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer"
+                >
+                  {statusLoadingPDF ? <Loader2 className="animate-spin text-blue-600" size={18} /> : <FileText size={18} className="text-blue-600" />} 
+                  {statusLoadingPDF ? 'Gerando Documento...' : 'Emitir PDF de Notificação Formal'}
                 </button>
-                <button onClick={() => toggleFlag('notificacao_extrajudicial', devedor.notificacao_extrajudicial)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
-                  {devedor.notificacao_extrajudicial ? 'Notificado' : 'Marcar Executado'}
+                <button onClick={() => toggleFlag('notificacao_extrajudicial', devedor?.notificacao_extrajudicial)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                  {devedor?.notificacao_extrajudicial ? 'Notificado' : 'Marcar Executado'}
                 </button>
               </div>
             </div>
@@ -238,19 +442,19 @@ export default function DetalheNegociacao() {
           {/* 04. ACORDO FIRMADO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.acordo_firmado ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.acordo_firmado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">04</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.acordo_firmado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">04</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.acordo_firmado ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.acordo_firmado ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Firmamento de Acordo</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+75 a D+90</span>
               </div>
               <div className="flex items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
                 <p className="text-xs font-medium text-slate-500">O paciente aceitou formalmente os termos da negociação e os novos prazos de pagamento.</p>
-                <button onClick={() => toggleFlag('acordo_firmado', devedor.acordo_firmado)} className={`px-12 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.acordo_firmado ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}>
-                   {devedor.acordo_firmado ? 'Acordo Ativo' : 'Confirmar Aceite'}
+                <button onClick={() => toggleFlag('acordo_firmado', devedor?.acordo_firmado)} className={`px-12 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}>
+                   {devedor?.acordo_firmado ? 'Acordo Ativo' : 'Confirmar Aceite'}
                 </button>
               </div>
             </div>
@@ -259,11 +463,11 @@ export default function DetalheNegociacao() {
           {/* 05. CONFISSÃO DE DÍVIDA */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.confissao_assinada ? 'bg-violet-600 text-white shadow-violet-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.confissao_assinada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">05</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-violet-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.confissao_assinada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">05</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.confissao_assinada ? 'bg-violet-50/30 border-violet-100' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.confissao_assinada ? 'bg-violet-50/30 border-violet-100' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
                 <div className="flex items-center gap-3">
                     <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Confissão de Dívida</h4>
@@ -272,11 +476,16 @@ export default function DetalheNegociacao() {
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+75 a D+90</span>
               </div>
               <div className="flex gap-4">
-                <button className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer">
-                  <FileDown size={18} className="text-violet-600" /> Gerar Termo p/ Assinatura (Art. 784, III, CPC)
+                <button 
+                  onClick={generateConfissaoPDF}
+                  disabled={statusLoadingConfissaoPDF}
+                  className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer"
+                >
+                  {statusLoadingConfissaoPDF ? <Loader2 className="animate-spin text-violet-600" size={18} /> : <FileDown size={18} className="text-violet-600" />} 
+                  {statusLoadingConfissaoPDF ? 'Gerando Termo...' : 'Gerar Termo p/ Assinatura (Art. 784, III, CPC)'}
                 </button>
-                <button onClick={() => toggleFlag('confissao_assinada', devedor.confissao_assinada)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.confissao_assinada ? 'bg-violet-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
-                  {devedor.confissao_assinada ? 'Assinado' : 'Marcar Executado'}
+                <button onClick={() => toggleFlag('confissao_assinada', devedor?.confissao_assinada)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                  {devedor?.confissao_assinada ? 'Assinado' : 'Marcar Executado'}
                 </button>
               </div>
             </div>
@@ -285,20 +494,20 @@ export default function DetalheNegociacao() {
           {/* 06. CARTÓRIO E RESTRIÇÕES */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.protesto_realizado ? 'bg-red-600 text-white shadow-red-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.protesto_realizado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">06</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.protesto_realizado ? 'bg-red-600 text-white shadow-red-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.protesto_realizado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">06</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.protesto_realizado ? 'bg-red-50/30 border-red-100' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.protesto_realizado ? 'bg-red-50/30 border-red-100' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Medidas Coercitivas</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+90 a D+120</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button onClick={() => toggleFlag('protesto_realizado', devedor.protesto_realizado)} className={`py-5 rounded-2xl border font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
+                  <button onClick={() => setIsProtestModalOpen(true)} className={`py-5 rounded-2xl border font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
                     Protestar em Cartório (Itapema/SC)
                   </button>
-                  <button className="py-5 rounded-2xl border border-slate-100 bg-white font-black text-[10px] uppercase tracking-widest text-slate-300 cursor-not-allowed">
+                  <button onClick={() => setIsNegativacaoModalOpen(true)} className={`py-5 rounded-2xl border font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
                     Negativação SPC/Serasa
                   </button>
               </div>
@@ -308,25 +517,25 @@ export default function DetalheNegociacao() {
           {/* 07. JUDICIALIZAÇÃO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor.judicializado ? 'bg-slate-900 text-white shadow-slate-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor.judicializado ? <Scale size={20} /> : <span className="font-black text-xs">07</span>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.judicializado ? 'bg-slate-900 text-white shadow-slate-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.judicializado ? <Scale size={20} /> : <span className="font-black text-xs">07</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor.judicializado ? 'bg-slate-900 text-white' : 'bg-slate-50/50 border-transparent'}`}>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.judicializado ? 'bg-slate-900 text-white' : 'bg-slate-50/50 border-transparent'}`}>
               <div className="flex justify-between items-start mb-6">
-                <h4 className={`font-black text-sm uppercase tracking-widest italic ${devedor.judicializado ? 'text-blue-400' : 'text-slate-900'}`}>Execução Judicial</h4>
+                <h4 className={`font-black text-sm uppercase tracking-widest italic ${devedor?.judicializado ? 'text-blue-400' : 'text-slate-900'}`}>Execução Judicial</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+120 +</span>
               </div>
-              <div className={`p-6 rounded-2xl border flex items-center justify-between ${devedor.judicializado ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100 shadow-sm'}`}>
+              <div className={`p-6 rounded-2xl border flex items-center justify-between ${devedor?.judicializado ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100 shadow-sm'}`}>
                  <div className="flex items-center gap-4">
-                    <AlertTriangle className={devedor.judicializado ? 'text-blue-400' : 'text-red-500'} size={24} />
+                    <AlertTriangle className={devedor?.judicializado ? 'text-blue-400' : 'text-red-500'} size={24} />
                     <div>
-                        <p className={`text-xs font-black uppercase tracking-tight ${devedor.judicializado ? 'text-white' : 'text-slate-900'}`}>Ajuizamento de Ação</p>
+                        <p className={`text-xs font-black uppercase tracking-tight ${devedor?.judicializado ? 'text-white' : 'text-slate-900'}`}>Ajuizamento de Ação</p>
                         <p className="text-[10px] font-medium text-slate-400">Preparar dossiê completo para o fórum de Itapema.</p>
                     </div>
                  </div>
-                 <button onClick={() => toggleFlag('judicializado', devedor.judicializado)} className={`px-12 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor.judicializado ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
-                    {devedor.judicializado ? 'Processo Ativo' : 'Iniciar Judicialização'}
+                 <button onClick={() => toggleFlag('judicializado', devedor?.judicializado)} className={`px-12 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.judicializado ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
+                    {devedor?.judicializado ? 'Processo Ativo' : 'Iniciar Judicialização'}
                  </button>
               </div>
             </div>
@@ -357,6 +566,185 @@ export default function DetalheNegociacao() {
 
         </div>
       </section>
+
+      {/* --- POPUP/MODAL INTERNO 1: MANUAL OPERACIONAL DO PROTESTANTE (ITAPEMA/SC) --- */}
+      {isProtestModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] border border-slate-100 shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="font-black text-lg text-slate-900 uppercase italic flex items-center gap-2">
+                  <BookOpen size={20} className="text-red-500" /> Manual do Protestante
+                </h3>
+                <p className="text-xs text-slate-400 font-medium uppercase mt-0.5">Roteiro Legal e Operacional • Comarca de Itapema / SC</p>
+              </div>
+              <button onClick={() => setIsProtestModalOpen(false)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer">
+                <XCircle size={22} />
+              </button>
+            </div>
+            <div className="space-y-6 flex-1 pr-2 text-slate-600 text-sm overflow-y-auto">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3 text-amber-800 text-xs text-left">
+                <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold uppercase block mb-1 text-left">Atenção Negociador Sênior:</span>
+                  Este manual serve de guia estrito para protocolar o passivo junto ao Tabelionato de Notas e Protestos de Itapema. Siga as etapas na ordem para evitar notas de devolução de título.
+                </div>
+              </div>
+              <div className="relative border-l border-slate-100 pl-6 ml-3 space-y-6 text-left">
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 1: Auditoria da Força Executiva do Título</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Certifique-se de que o **Termo de Confissão de Dívida** gerado no Passo 05 está assinado digitalmente ou fisicamente pelo devedor e por **duas testemunhas identificadas com CPF**. O Provimento da CGJ/SC exige a qualificação estrita das testemunhas para conferir a natureza de título executivo extrajudicial (Art. 784, III, do CPC).
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 2: Atualização e Fixação Contábil do Débito</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    O valor a ser apontado no cartório deve ser rigorosamente idêntico ao montante líquido estipulado no sistema (R$ {valorEditavel.toLocaleString('pt-BR', {minimumFractionDigits: 2})}). Calcule os encargos moratórios autorizados na Cláusula Terceira do contrato (INPC/IBGE + juros moratórios de 1% ao mês *pro rata die*). O cartório rejeitará duplicidade ou excesso de execução sem justificativa descrita em planilha anexa.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 3: Acesso ao Portal do CRA-SC (Internet)</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    O envio preferencial é eletrônico através da **CRA-SC (Central de Remessa de Arquivos de Santa Catarina)**, operada pelo IEPTB-SC (ieptbsc.com.br). Utilize o certificado digital ICP-Brasil da clínica para acessar o ambiente e gerar o arquivo de remessa contendo os dados do devedor e as informações do título confessado.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 4: Protocolo Presencial Alternativo (Balcão)</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Caso opte pelo protocolo físico, dirija-se ao **Tabelionato de Notas e Protestos de Itapema**, localizado na Av. Nereu Ramos, na Meia Praia. Apresente o Instrumento Particular original assinado, cópia do contrato de prestação de serviços odontológicos da AC Odontologia, e o requerimento de apontamento devidamente assinado pelo representante da clínica.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 5: Qualificação do Endereço de Notificação</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    O endereço do devedor deve estar rigorosamente atualizado. O cartório realiza a notificação de forma pessoal. Endereços genéricos ou desatualizados causarão a devolução do título com a certidão de "não localizado". Caso o devedor mude de endereço furtivamente, o tabelião efetuará o protesto por Edital de Imprensa Oficial.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 6: Prazo de Intimação Legal Cartorária</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Uma vez protocolado o título, o cartório expedirá a intimação. Em Santa Catarina, o devedor possui o prazo improrrogável de **3 (três) dias úteis** após o recebimento para comparecer ao balcão do tabelionato e efetuar o pagamento integral das parcelas acumuladas acrescidas das taxas do cartório.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 7: Lavratura e Negativação Automática de Crédito</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Se o devedor não quitar o débito no prazo de 3 dias úteis, o Tabelião lavrará o protesto definitivo. O efeito prático é imediato: restrição total do CPF nos sistemas bancários nacionais, cancelamento de crédito mercante e inserção automática nos bancos de dados de proteção ao crédito (SPC e SERASA).
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 pt-4 mt-6 flex gap-3">
+              <button onClick={() => setIsProtestModalOpen(false)} className="flex-1 bg-slate-100 text-slate-500 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer text-center">
+                Fechar Manual
+              </button>
+              <button 
+                onClick={() => {
+                  toggleFlag('protesto_realizado', devedor?.protesto_realizado);
+                  setIsProtestModalOpen(false);
+                }}
+                className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer text-center text-white ${devedor?.protesto_realizado ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+              >
+                {devedor?.protesto_realizado ? 'Remover Flag de Protesto' : 'Marcar como Protestado'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- POPUP/MODAL INTERNO 2: MANUAL DA NEGATIVAÇÃO CADASTRAL (SPC/SERASA) --- */}
+      {isNegativacaoModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] border border-slate-100 shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="font-black text-lg text-slate-900 uppercase italic flex items-center gap-2">
+                  <Info size={20} className="text-red-500" /> Manual da Negativação Cadastral
+                </h3>
+                <p className="text-xs text-slate-400 font-medium uppercase mt-0.5">Diretrizes de Restrição de Crédito • SPC Brasil / Serasa Experian</p>
+              </div>
+              <button onClick={() => setIsNegativacaoModalOpen(false)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer">
+                <XCircle size={22} />
+              </button>
+            </div>
+            <div className="space-y-6 flex-1 pr-2 text-slate-600 text-sm overflow-y-auto">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3 text-amber-800 text-xs text-left">
+                <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold uppercase block mb-1 text-left">Segurança de Crédito e Compliance:</span>
+                  A inclusão nos cadastros restritivos exige rigor absoluto de informações para evitar indenizações com base na Súmula 548 do STJ. Certifique-se de que a origem contábil do passivo está 100% auditada.
+                </div>
+              </div>
+              <div className="relative border-l border-slate-100 pl-6 ml-3 space-y-6 text-left">
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 1: Notificação Prévia Obrigatória (Art. 43, §2º do CDC)</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Por lei, o devedor deve ser previamente comunicado por escrito antes da publicidade da restrição. Esse ato é automatizado pelos próprios birôs de crédito assim que a AC Odontologia faz a inclusão no sistema, concedendo um prazo de tolerância para o devedor regularizar o saldo diretamente na plataforma antes da negativação expor-se ao mercado.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 2: Inclusão via Sistema Credenciado (CDL / Serasa)</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Acesse o painel restritivo utilizando o CNPJ credenciado da clínica. Informe com exatidão o CPF do paciente, número do contrato original de prestação de serviços odontológicos, e a data exata em que ocorreu o primeiro inadimplemento (vencimento da primeira parcela em atraso: {devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : ''}).
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 3: Vedação de Cobrança Abusiva e Tarifas Contratuais</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    O montante lançado (R$ {valorEditavel.toLocaleString('pt-BR', {minimumFractionDigits: 2})}) deve refletir exclusivamente a obrigação líquida odontológica não paga, corrigida estritamente pelos índices contratuais. Jamais inclua juros flutuantes abusivos ou taxas administrativas não previstas em contrato, sob risco de readequação judicial com sanções de repetição do indébito.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 4: Súmula 385 do STJ e Inadimplência Contumaz</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Antes de consolidar o envio, verifique se o devedor já possui anotações preexistentes legítimas no sistema. De acordo com a Súmula 385 do Superior Tribunal de Justiça, da anotação irregular em cadastro de proteção ao crédito, não cabe indenização por dano moral quando preexistente legítima inscrição, ressalvado o direito ao cancelamento.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 5: Conseqüências Comerciais e Travamento do Score</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Após o prazo de 10 dias da postagem da carta de aviso do birô, caso o devedor permaneça inerte, a restrição torna-se pública. Isso causa a queda imediata do Score de Crédito do paciente, impedindo financiamentos bancários, emissão de talões de cheque, limites comerciais e novos contratos de crédito em todo o território nacional.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 6: Prazo de Baixa Obrigatória Pós-Quitação (Súmula 548 / STJ)</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Fique atento: a partir do momento em que o assunto for liquidado ou houver o pagamento da primeira parcela do novo acordo firmado, a AC Odontologia tem o prazo improrrogável de **5 (cinco) dias úteis** para efetuar a baixa da negativação no sistema. O descumprimento desse prazo gera dano moral presumido (*in re ipsa*) conforme jurisprudência unificada dos tribunais.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 pt-4 mt-6 flex gap-3">
+              <button onClick={() => setIsNegativacaoModalOpen(false)} className="flex-1 bg-slate-100 text-slate-500 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer text-center">
+                Fechar Manual
+              </button>
+              <button 
+                onClick={() => {
+                  toggleFlag('protesto_realizado', devedor?.protesto_realizado);
+                  setIsNegativacaoModalOpen(false);
+                }}
+                className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer text-center text-white ${devedor?.protesto_realizado ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+              >
+                {devedor?.protesto_realizado ? 'Remover Flag de Restrição' : 'Marcar como Negativado'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

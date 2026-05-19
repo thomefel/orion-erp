@@ -238,7 +238,7 @@ export default function RecebiveisPage() {
       <header className="mb-10 flex justify-between items-end text-left">
         <div className="text-left text-slate-900">
           <h1 className="text-4xl font-black tracking-tight mb-2 text-left italic uppercase">
-            Orion <span className="text-blue-600 not-italic">Receivables</span>
+            Orion <span className="text-blue-600 not-italic">Recebíveis</span>
           </h1>
           <p className="text-slate-500 font-medium text-left">Consistência Total e Precisão de Dados • AC Odontologia</p>
         </div>

@@ -129,7 +129,7 @@ export default function FiscalPage() {
 
   const handleClearDraft = async () => {
     if (!confirm('Deseja apagar o rascunho salvo na nuvem?')) return;
-    const { error } = await supabase.from('rascunhos_fiscal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error = null } = await supabase.from('rascunhos_fiscal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     if (!error) {
       setLocalData([]);
       setFileStates({
@@ -194,25 +194,35 @@ export default function FiscalPage() {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const lines = content.split(/\r?\n/);
-      const extracted: LocalRecord[] = lines.map((line, index) => {
+      
+      let totalCartao = 0;
+      const extracted: LocalRecord[] = [];
+
+      lines.forEach((line, index) => {
         const cols = line.split(';');
-        if (cols.length < 4) return null;
+        if (cols.length < 4) return;
         
         const histNorm = normalizeText(String(cols[1]));
-        const isFaturamento = histNorm.includes('RECEBIDO') && (histNorm.includes('PIX') || histNorm.includes('BOLETO'));
+
+        if (histNorm.includes('CREDITO DOMICILIO CARTAO')) {
+          const valorLimpo = Number(cols[3].replace('.', '').replace(',', '.'));
+          totalCartao += Math.abs(valorLimpo);
+          return;
+        }
         
-        if (!isFaturamento) return null;
+        const isFaturamento = histNorm.includes('RECEBIDO') && (histNorm.includes('PIX') || histNorm.includes('BOLETO'));
+        if (!isFaturamento) return;
         
         const nomeBruto = String(cols[2]).trim();
         const nomeNorm = normalizeText(nomeBruto);
-        if (nomeNorm.includes('AC ODONTOLOGIA')) return null;
+        if (nomeNorm.includes('AC ODONTOLOGIA')) return;
 
         const valorLimpo = Number(cols[3].replace('.', '').replace(',', '.'));
         const cpfsEncontrados = patientsMap[nomeNorm] || [];
         let cpfFinal = 'NAO ENCONTRADO';
         if (cpfsEncontrados.length === 1) cpfFinal = cpfsEncontrados[0];
 
-        return {
+        extracted.push({
           id_temp: `inter_${Date.now()}_${index}`,
           data_competencia: cols[0].trim(),
           valor_servico: Math.abs(valorLimpo),
@@ -220,8 +230,20 @@ export default function FiscalPage() {
           paciente_nome: nomeBruto.toUpperCase(),
           origem: 'Inter PJ',
           isValid: false
-        };
-      }).filter(item => item !== null) as LocalRecord[];
+        });
+      });
+
+      if (totalCartao > 0) {
+        extracted.push({
+          id_temp: `inter_cartao_${Date.now()}`,
+          data_competencia: '',
+          valor_servico: totalCartao,
+          paciente_cpf: 'NAO ENCONTRADO',
+          paciente_nome: 'CREDITO EVOLUSERVICES',
+          origem: 'Inter PJ',
+          isValid: false
+        });
+      }
       
       setLocalData(prev => getValidatedData([...prev, ...extracted]));
       setFileStates(prev => ({ ...prev, inter: { loaded: true, name: file.name } }));
@@ -240,6 +262,8 @@ export default function FiscalPage() {
         const buffer = e.target?.result as ArrayBuffer;
         const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
         const extracted: LocalRecord[] = [];
+        let totalMaquininha = 0;
+
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
@@ -254,7 +278,9 @@ export default function FiscalPage() {
           sortedY.forEach(y => {
             const lineItems = rowGroups[Number(y)].sort((a, b) => a.transform[4] - b.transform[4]);
             const fullLine = lineItems.map(item => item.str).join(' ');
-            if (fullLine.toUpperCase().includes('RECEBIMENTO PIX')) {
+            const cleanLine = fullLine.trim().toUpperCase();
+
+            if (cleanLine.includes('RECEBIMENTO PIX')) {
               const dateMatch = fullLine.match(/(\d{2}\/\d{2}\/\d{4})/);
               const valueMatch = fullLine.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
               const descMatch = fullLine.match(/RECEBIMENTO PIX\s+(?:SICREDI\s+)?(\d{11})\s+(.*?)(?:\s+PIX_CRED|PIX_CRE|PIX CRED|\d{9}|$)/i);
@@ -271,9 +297,27 @@ export default function FiscalPage() {
                   isValid: false
                 });
               }
+            } else if (cleanLine.includes('SICREDI CREDITO') || cleanLine.includes('SICREDI DEBITO')) {
+              const valueMatch = fullLine.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
+              if (valueMatch) {
+                totalMaquininha += Number(valueMatch[1].replace(/\./g, '').replace(',', '.'));
+              }
             }
           });
         }
+
+        if (totalMaquininha > 0) {
+          extracted.push({
+            id_temp: `sicredi_maquininha_${Date.now()}`,
+            data_competencia: '',
+            valor_servico: totalMaquininha,
+            paciente_cpf: 'NAO ENCONTRADO',
+            paciente_nome: 'MAQUININHA SICREDI',
+            origem: 'Sicredi PDF',
+            isValid: false
+          });
+        }
+        
         setLocalData(prev => getValidatedData([...prev, ...extracted]));
         setFileStates(prev => ({ ...prev, sicredi: { loaded: true, name: file.name } }));
       };
@@ -319,8 +363,14 @@ export default function FiscalPage() {
         aliquota_simples: Number(aliquota),
         origem: item.origem
       }));
-      await supabase.from('rascunhos_fiscal').insert(payload);
-    } catch (err) { console.error('Erro ao salvar rascunho.'); }
+      const { error } = await supabase.from('rascunhos_fiscal').insert(payload);
+      
+      if (error) throw error;
+      alert('Rascunho salvo com sucesso!');
+    } catch (err) { 
+      console.error('Erro ao salvar rascunho.', err); 
+      alert('Erro ao salvar rascunho.');
+    }
     setIsSavingDraft(false);
   };
 
@@ -349,7 +399,7 @@ export default function FiscalPage() {
 
   const clearCloud = async () => {
     if (!confirm('Limpar toda a fila da nuvem?')) return;
-    const { error } = await supabase.from('lotes_emissao_nfe').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error = null } = await supabase.from('lotes_emissao_nfe').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     if (!error) loadFromCloud();
   };
 
@@ -457,7 +507,7 @@ export default function FiscalPage() {
                       <div className="text-xs font-black text-slate-900 mb-1 uppercase">{item.paciente_nome}</div>
                       <input type="text" value={item.paciente_cpf} onChange={e => handleUpdateField(item.id_temp, 'paciente_cpf', cleanCPF(e.target.value))} className={`bg-slate-50 px-2 py-1 rounded border w-full text-xs font-mono ${item.paciente_cpf === 'NAO ENCONTRADO' ? 'border-red-300 text-red-500 font-black' : 'border-slate-100'}`} />
                     </td>
-                    <td className="px-6 py-4 text-left"><input type="text" value={item.data_competencia} onChange={e => handleUpdateField(item.id_temp, 'data_competencia', e.target.value)} className="bg-transparent border-b border-dashed w-24 outline-none" /></td>
+                    <td className="px-6 py-4 text-left"><input type="text" value={item.data_competencia} onChange={e => handleUpdateField(item.id_temp, 'data_competencia', e.target.value)} placeholder="DD/MM/AAAA" className="bg-transparent border-b border-dashed w-24 outline-none" /></td>
                     <td className="px-6 py-4 text-left"><input type="number" value={item.valor_servico} onChange={e => handleUpdateField(item.id_temp, 'valor_servico', Number(e.target.value))} className="bg-transparent font-bold w-24 outline-none" /></td>
                     <td className="px-6 py-4 text-right"><button onClick={() => setLocalData(prev => prev.filter(i => i.id_temp !== item.id_temp))} className="text-slate-300 hover:text-red-500 cursor-pointer transition-colors"><Trash2 size={18} /></button></td>
                   </tr>

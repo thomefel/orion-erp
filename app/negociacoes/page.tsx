@@ -57,7 +57,15 @@ export default function NegociacoesPage() {
           vencimentoMaisAntigo: `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`,
           diasAtraso: dias,
           parcelasQtd: item.parcelas_qtd,
-          fase_atual: item.fase_atual
+          fase_atual: item.fase_atual,
+          // Extração das chaves de progresso tático para a etiqueta de status
+          notificacao_amigavel: item.notificacao_amigavel,
+          proposta_enviada: item.proposta_enviada,
+          notificacao_extrajudicial: item.notificacao_extrajudicial,
+          acordo_firmado: item.acordo_firmado,
+          confissao_assinada: item.confissao_assinada,
+          protesto_realizado: item.protesto_realizado,
+          judicializado: item.judicializado
         };
       });
       setConsolidatedData(formatado);
@@ -68,6 +76,18 @@ export default function NegociacoesPage() {
     }
     setIsProcessing(false);
   }
+
+  // Lógica inteligente para determinar visualmente a fase operacional mais adiantada
+  const getFaseBadge = (item: any) => {
+    if (item.judicializado) return { label: 'Judicializado', classes: 'bg-slate-900 text-white border-slate-950 font-black' };
+    if (item.protesto_realizado) return { label: 'Protestado', classes: 'bg-red-50 text-red-700 border-red-200' };
+    if (item.confissao_assinada) return { label: 'Confissão Assinada', classes: 'bg-violet-50 text-violet-700 border-violet-200' };
+    if (item.acordo_firmado) return { label: 'Acordo Firmado', classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    if (item.notificacao_extrajudicial) return { label: 'Notif. Extrajudicial', classes: 'bg-blue-50 text-blue-700 border-blue-200' };
+    if (item.proposta_enviada) return { label: 'Proposta Enviada', classes: 'bg-amber-50 text-amber-700 border-amber-200' };
+    if (item.notificacao_amigavel) return { label: 'Abordagem Inicial', classes: 'bg-teal-50 text-teal-700 border-teal-200' };
+    return { label: 'Sem Ações', classes: 'bg-slate-50 text-slate-400 border-slate-200' };
+  };
 
   const normalizeText = (text: string) => {
     return String(text || '')
@@ -209,8 +229,8 @@ export default function NegociacoesPage() {
     <div className="max-w-7xl mx-auto px-6 pt-8 pb-20 text-left">
       <header className="mb-12 flex justify-between items-end text-left">
         <div className="text-left">
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-2 uppercase italic text-left text-left">
-            Orion <span className="text-blue-600 not-italic text-left">Recovery</span>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-2 uppercase italic text-left">
+            Orion <span className="text-blue-600 not-italic text-left">Negociação</span>
           </h1>
           <p className="text-slate-500 font-medium text-left">Gestão de Inadimplência Superior a 60 dias • AC Odontologia</p>
         </div>
@@ -239,7 +259,7 @@ export default function NegociacoesPage() {
                 </div>
                 <div className="flex-1 text-left">
                   <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Base Financeira Histórica</label>
-                  <p className="text-xs text-slate-400 truncate text-left text-left">{fileName || 'Selecione o Excel exportado do Simples Dental'}</p>
+                  <p className="text-xs text-slate-400 truncate text-left">{fileName || 'Selecione o Excel exportado do Simples Dental'}</p>
                   <input type="file" accept=".xlsx" onChange={handleFileLoad} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 </div>
               </div>
@@ -268,7 +288,7 @@ export default function NegociacoesPage() {
         )}
       </section>
 
-      <div className="flex items-center gap-3 mb-10 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left text-left">
+      <div className="flex items-center gap-3 mb-10 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
         {isProcessing || isSyncing ? <Loader2 size={18} className="text-blue-500 animate-spin" /> : <AlertCircle size={18} className="text-blue-500" />}
         <p className="text-sm font-bold text-slate-600 text-left">{status}</p>
       </div>
@@ -283,13 +303,13 @@ export default function NegociacoesPage() {
              <p className="font-black text-slate-400 uppercase text-[10px] tracking-[0.3em] animate-pulse">Processando dados históricos...</p>
           </div>
         ) : consolidatedData.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-40 text-slate-300 text-left text-left text-left">
+          <div className="flex flex-col items-center justify-center py-40 text-slate-300 text-left">
              <TrendingDown size={64} className="mb-4 opacity-10" />
              <p className="font-bold uppercase tracking-widest text-xs text-left">Aguardando definição da base de devedores</p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto text-left text-left text-left">
+            <div className="overflow-x-auto text-left">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-400">
@@ -313,17 +333,28 @@ export default function NegociacoesPage() {
                     <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Gestão</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 text-left text-left">
+                <tbody className="divide-y divide-slate-50 text-left">
                   {filteredData.map((item, idx) => (
-                    <tr key={item.cpf || `nome-${idx}`} className="group hover:bg-blue-50/30 transition-colors text-left text-left text-left">
+                    <tr key={item.cpf || `nome-${idx}`} className="group hover:bg-blue-50/30 transition-colors text-left">
                       <td className="p-6 text-left">
                         <div className="flex items-center gap-4 text-left">
                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black text-xs group-hover:bg-blue-600 group-hover:text-white transition-all">
                               {idx + 1}
                            </div>
                            <div className="text-left">
-                              <div className="font-bold text-slate-900 uppercase text-sm text-left text-left">{item.nome}</div>
-                              <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left text-left">{item.cpf || 'CPF NÃO INFORMADO'}</div>
+                              {/* Integração sutil e elegante do Badge de Status ao lado do Nome */}
+                              <div className="font-bold text-slate-900 uppercase text-sm text-left flex items-center gap-3">
+                                <span>{item.nome}</span>
+                                {(() => {
+                                  const badge = getFaseBadge(item);
+                                  return (
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border tracking-wider ${badge.classes}`}>
+                                      {badge.label}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf || 'CPF NÃO INFORMADO'}</div>
                            </div>
                         </div>
                       </td>
@@ -334,8 +365,8 @@ export default function NegociacoesPage() {
                         <div className="text-[9px] text-slate-400 mt-1 font-bold uppercase text-center">Desde {item.vencimentoMaisAntigo}</div>
                       </td>
                       <td className="p-6 text-left">
-                        <div className="text-lg font-black text-slate-900 text-left text-left">R$ {item.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase italic text-left text-left">{item.parcelasQtd} parcelas pendentes</div>
+                        <div className="text-lg font-black text-slate-900 text-left">R$ {item.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        <div className="text-[10px] text-slate-400 font-bold uppercase italic text-left">{item.parcelasQtd} parcelas pendentes</div>
                       </td>
                       <td className="p-6 text-center">
                         <Link href={`/negociacoes/${item.cpf}`}>
@@ -350,7 +381,7 @@ export default function NegociacoesPage() {
               </table>
             </div>
             
-            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-12 text-left text-left">
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-12 text-left">
               <div className="text-right">
                 <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total de Devedores</span>
                 <span className="text-2xl font-black text-slate-900 text-right">{filteredData.length}</span>
