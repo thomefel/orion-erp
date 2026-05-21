@@ -18,7 +18,7 @@ import {
   CloudUpload,
   CheckCircle2,
   Users,
-  Trash2 // Importação adicionada para o novo botão de expurgo
+  Trash2 // Importação utilizada para os botões de expurgo
 } from 'lucide-react';
 
 export default function NegociacoesPage() {
@@ -27,7 +27,7 @@ export default function NegociacoesPage() {
   const [consolidatedData, setConsolidatedData] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isClearing, setIsClearing] = useState(false); // Novo estado de processamento de limpeza
+  const [isClearing, setIsClearing] = useState(false); // Estado de processamento de limpeza em massa
   const [status, setStatus] = useState('Aguardando arquivos para iniciar a consolidação...');
   const [isImportExpanded, setIsImportExpanded] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,6 +67,7 @@ export default function NegociacoesPage() {
           parcelasQtd: item.parcelas_qtd,
           fase_atual: item.fase_atual,
           celular: item.celular,
+          contato_desatualizado: item.contato_desatualizado, // Coluna acoplada para monitoramento de higienização
           notificacao_amigavel: item.notificacao_amigavel,
           proposta_enviada: item.proposta_enviada,
           notificacao_extrajudicial: item.notificacao_extrajudicial,
@@ -213,7 +214,8 @@ export default function NegociacoesPage() {
               vencimentoMaisAntigo: item.vencimento,
               diasAtraso: diff,
               parcelasQtd: 1,
-              celular: patientsData[item.cpf] || ''
+              celular: patientsData[item.cpf] || '',
+              contato_desatualizado: false
             };
           } else {
             aggregated[chave].valorTotal += item.valor;
@@ -277,7 +279,7 @@ export default function NegociacoesPage() {
       const { error } = await supabase
         .from('devedores_historicos')
         .delete()
-        .neq('cpf', '000.000.000-00'); // Deleta de forma massiva forçando correspondência ampla
+        .neq('cpf', '000.000.000-00');
 
       if (error) throw error;
 
@@ -293,6 +295,27 @@ export default function NegociacoesPage() {
       setStatus(`Erro ao limpar base: ${err.message || 'Falha de comunicação'}`);
     } finally {
       setIsClearing(false);
+    }
+  };
+
+  // --- MOTOR EXCLUSIVO PARA HIGIENIZAÇÃO INDIVIDUAL ITEM A ITEM ---
+  const handleDeleteSingle = async (cpf: string) => {
+    const confirmDelete = confirm("Deseja realmente remover permanentemente este devedor da nuvem?");
+    if (!confirmDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('devedores_historicos')
+        .delete()
+        .eq('cpf', cpf);
+
+      if (error) throw error;
+
+      setConsolidatedData(prev => prev.filter(item => item.cpf !== cpf));
+      setStatus('Registro individual higienizado com sucesso.');
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erro ao excluir registro: ${err.message || 'Falha de comunicação'}`);
     }
   };
 
@@ -361,7 +384,6 @@ export default function NegociacoesPage() {
                 Iniciar Agregação
               </button>
               
-              {/* Contêiner Flexível Horizontal para dispor o botão de Limpeza ao lado de Salvar na Nuvem */}
               <div className="flex-1 flex gap-3 w-full">
                 <button 
                   onClick={saveToSupabase}
@@ -450,6 +472,13 @@ export default function NegociacoesPage() {
                                     </span>
                                   );
                                 })()}
+                                
+                                {/* Badge tático adicional para sinalizar interrupção de canal por contato inválido */}
+                                {item.contato_desatualizado && (
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase border tracking-wider bg-orange-50 text-orange-700 border-orange-200 animate-pulse">
+                                    Sem Contato
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[10px] text-slate-400 font-mono tracking-tighter text-left">{item.cpf || 'CPF NÃO INFORMADO'}</div>
                            </div>
@@ -466,11 +495,20 @@ export default function NegociacoesPage() {
                         <div className="text-[10px] text-slate-400 font-bold uppercase italic text-left">{item.parcelasQtd} parcelas pendentes</div>
                       </td>
                       <td className="p-6 text-center">
-                        <Link href={`/negociacoes/${item.cpf}`}>
-                            <button className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm group/btn active:scale-95 cursor-pointer">
-                            Ações <ArrowUpRight size={14} className="group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
-                            </button>
-                        </Link>
+                        <div className="flex items-center justify-center gap-2">
+                          <Link href={`/negociacoes/${item.cpf}`}>
+                              <button className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm group/btn active:scale-95 cursor-pointer">
+                              Ações <ArrowUpRight size={14} className="group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
+                              </button>
+                          </Link>
+                          <button 
+                            onClick={() => handleDeleteSingle(item.cpf)}
+                            className="inline-flex items-center justify-center p-3 bg-white border border-slate-200 rounded-2xl text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm active:scale-95 cursor-pointer"
+                            title="Higienizar registro da lista"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

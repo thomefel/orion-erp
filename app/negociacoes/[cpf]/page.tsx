@@ -442,7 +442,7 @@ export default function DetalheNegociacao() {
                     onClick={() => toggleFlag('contato_desatualizado', devedor?.contato_desatualizado)} 
                     className={`px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}
                   >
-                    {devedor?.contato_desatualizado ? 'Sinalizar Desatualizado' : 'Marcar Inválido'}
+                    {devedor?.contato_desatualizado ? 'Desatualizado' : 'Marcar Inválido'}
                   </button>
                 </div>
               </div>
