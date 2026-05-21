@@ -16,18 +16,26 @@ import {
   ChevronDown,
   ChevronUp,
   CloudUpload,
-  CheckCircle2
+  CheckCircle2,
+  Users,
+  Trash2 // Importação adicionada para o novo botão de expurgo
 } from 'lucide-react';
 
 export default function NegociacoesPage() {
   const [rawData, setRawData] = useState<any[]>([]);
+  const [patientsData, setPatientsData] = useState<Record<string, string>>({}); // Mapa de contatos
   const [consolidatedData, setConsolidatedData] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [fileName, setFileName] = useState('');
-  const [status, setStatus] = useState('Aguardando base histórica para análise...');
+  const [isClearing, setIsClearing] = useState(false); // Novo estado de processamento de limpeza
+  const [status, setStatus] = useState('Aguardando arquivos para iniciar a consolidação...');
   const [isImportExpanded, setIsImportExpanded] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const [fileStates, setFileStates] = useState({
+    finance: { loaded: false, name: '' },
+    patients: { loaded: false, name: '' }
+  });
 
   useEffect(() => {
     fetchFromSupabase();
@@ -58,7 +66,7 @@ export default function NegociacoesPage() {
           diasAtraso: dias,
           parcelasQtd: item.parcelas_qtd,
           fase_atual: item.fase_atual,
-          // Extração das chaves de progresso tático para a etiqueta de status
+          celular: item.celular,
           notificacao_amigavel: item.notificacao_amigavel,
           proposta_enviada: item.proposta_enviada,
           notificacao_extrajudicial: item.notificacao_extrajudicial,
@@ -77,7 +85,13 @@ export default function NegociacoesPage() {
     setIsProcessing(false);
   }
 
-  // Lógica inteligente para determinar visualmente a fase operacional mais adiantada
+  const formatPhone = (phone: any) => {
+    let cleaned = String(phone).replace(/\D/g, ''); 
+    if (cleaned.length === 11 && cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+    if (!cleaned.startsWith('55')) cleaned = `55${cleaned}`;
+    return cleaned;
+  };
+
   const getFaseBadge = (item: any) => {
     if (item.judicializado) return { label: 'Judicializado', classes: 'bg-slate-900 text-white border-slate-950 font-black' };
     if (item.protesto_realizado) return { label: 'Protestado', classes: 'bg-red-50 text-red-700 border-red-200' };
@@ -131,7 +145,7 @@ export default function NegociacoesPage() {
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setFileName(file.name);
+    setFileStates(prev => ({ ...prev, finance: { loaded: true, name: file.name } }));
     
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -149,14 +163,39 @@ export default function NegociacoesPage() {
       }));
 
       setRawData(filtered);
-      setStatus('Arquivo carregado. Pronto para consolidação histórica.');
+      setStatus('Base financeira processada. Importe agora a lista de pacientes.');
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handlePatientsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileStates(prev => ({ ...prev, patients: { loaded: true, name: file.name } }));
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const data: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 'A' });
+      const contactsMap: Record<string, string> = {};
+      data.forEach((row) => {
+        const cpf = String(row.D || '').replace(/\D/g, '');
+        if (cpf) contactsMap[cpf] = formatPhone(row.E);
+      });
+      setPatientsData(contactsMap);
+      setStatus(`Lista de contatos carregada. Pronto para realizar a agregação.`);
     };
     reader.readAsBinaryString(file);
   };
 
   const handleConsolidate = () => {
+    if (rawData.length === 0 || Object.keys(patientsData).length === 0) {
+      setStatus('Erro crítico: Forneça a Base Financeira e a Lista de Pacientes antes de consolidar.');
+      return;
+    }
     setIsProcessing(true);
-    setStatus('Agregando dívidas por CPF e calculando maturidade...');
+    setStatus('Realizando skip tracing interno e agrupando parcelas por CPF...');
     
     setTimeout(() => {
       const aggregated: Record<string, any> = {};
@@ -173,7 +212,8 @@ export default function NegociacoesPage() {
               valorTotal: item.valor,
               vencimentoMaisAntigo: item.vencimento,
               diasAtraso: diff,
-              parcelasQtd: 1
+              parcelasQtd: 1,
+              celular: patientsData[item.cpf] || ''
             };
           } else {
             aggregated[chave].valorTotal += item.valor;
@@ -191,7 +231,7 @@ export default function NegociacoesPage() {
       const result = Object.values(aggregated).sort((a: any, b: any) => b.valorTotal - a.valorTotal);
       setConsolidatedData(result);
       setIsProcessing(false);
-      setStatus(`Consolidação concluída localmente: ${result.length} devedores identificados.`);
+      setStatus(`Consolidação concluída localmente: ${result.length} contratos auditados.`);
     }, 800);
   };
 
@@ -206,7 +246,8 @@ export default function NegociacoesPage() {
         nome: item.nome,
         data_divida: formatToISODate(item.vencimentoMaisAntigo),
         parcelas_qtd: item.parcelasQtd,
-        valor_total: item.valorTotal
+        valor_total: item.valorTotal,
+        celular: item.celular || null
       }));
 
       const { error } = await supabase
@@ -215,13 +256,43 @@ export default function NegociacoesPage() {
 
       if (error) throw error;
 
-      setStatus('SUCESSO: Base histórica salva e protegida com RLS.');
+      setStatus('SUCESSO: Base histórica e canais de contato protegidos com RLS.');
       setIsImportExpanded(false);
     } catch (err: any) {
       console.error("Erro Supabase:", err);
       setStatus(`Erro na sincronização: ${err.message || 'Falha na conexão com banco'}`);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // --- MOTOR TÁTICO DE EXPURGO DA BASE HISTÓRICA DE TESTE ---
+  const handleClearDatabase = async () => {
+    const confirmClear = confirm("ATENÇÃO MÁXIMA: Deseja apagar TODOS os registros históricos de negociação da nuvem? Esta ação é imediata, irreversível e limpará completamente o painel.");
+    if (!confirmClear) return;
+
+    setIsClearing(true);
+    setStatus('Expurgando registros da base de dados remota...');
+    try {
+      const { error } = await supabase
+        .from('devedores_historicos')
+        .delete()
+        .neq('cpf', '000.000.000-00'); // Deleta de forma massiva forçando correspondência ampla
+
+      if (error) throw error;
+
+      setStatus('SUCESSO: Base histórica remota limpa com sucesso.');
+      setConsolidatedData([]);
+      setRawData([]);
+      setFileStates({
+        finance: { loaded: false, name: '' },
+        patients: { loaded: false, name: '' }
+      });
+    } catch (err: any) {
+      console.error(err);
+      setStatus(`Erro ao limpar base: ${err.message || 'Falha de comunicação'}`);
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -244,7 +315,7 @@ export default function NegociacoesPage() {
           <div className="flex items-center gap-3">
              {isImportExpanded ? <ChevronUp className="text-blue-600" size={20} /> : <ChevronDown className="text-blue-600" size={20} />}
              <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
-               {isImportExpanded ? 'Recolher Painel de Importação' : 'Nova Importação de Base Histórica'}
+               {isImportExpanded ? 'Recolher Painel de Importação' : 'Importação de Base Histórica'}
              </span>
           </div>
           {!isImportExpanded && <Database size={16} className="text-slate-300" />}
@@ -252,15 +323,30 @@ export default function NegociacoesPage() {
 
         {isImportExpanded && (
           <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-top-4 duration-300">
-            <div className="md:col-span-2 relative group transition-all duration-300 bg-white p-8 rounded-3xl border-2 border-dashed border-slate-200 hover:border-blue-400">
-              <div className="flex items-center gap-6">
-                <div className="p-4 bg-slate-50 text-slate-400 rounded-2xl group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                  <Database size={32} />
+            <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className={`relative group transition-all duration-300 bg-white p-6 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200 hover:border-blue-400'}`}>
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-2xl ${fileStates.finance.loaded ? 'bg-blue-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                    <Database size={24} />
+                  </div>
+                  <div className="flex-1 text-left truncate">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Base Financeira Histórica</label>
+                    <p className="text-[11px] text-slate-400 truncate">{fileStates.finance.name || 'Selecionar planilha de débitos'}</p>
+                    <input type="file" accept=".xlsx" onChange={handleFileLoad} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                  </div>
                 </div>
-                <div className="flex-1 text-left">
-                  <label className="block text-sm font-bold text-slate-700 mb-1 text-left">Base Financeira Histórica</label>
-                  <p className="text-xs text-slate-400 truncate text-left">{fileName || 'Selecione o Excel exportado do Simples Dental'}</p>
-                  <input type="file" accept=".xlsx" onChange={handleFileLoad} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              </div>
+
+              <div className={`relative group transition-all duration-300 bg-white p-6 rounded-3xl border-2 border-dashed ${fileStates.patients.loaded ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200 hover:border-emerald-400'}`}>
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                    <Users size={24} />
+                  </div>
+                  <div className="flex-1 text-left truncate">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Lista de Pacientes (Contatos)</label>
+                    <p className="text-[11px] text-slate-400 truncate">{fileStates.patients.name || 'Selecionar planilha de contatos'}</p>
+                    <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -268,28 +354,40 @@ export default function NegociacoesPage() {
             <div className="flex flex-col gap-3 text-left">
               <button 
                 onClick={handleConsolidate}
-                disabled={rawData.length === 0 || isProcessing}
+                disabled={!fileStates.finance.loaded || !fileStates.patients.loaded || isProcessing}
                 className="flex-1 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
               >
                 {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <FileSearch size={18} />}
                 Iniciar Agregação
               </button>
               
-              <button 
-                onClick={saveToSupabase}
-                disabled={consolidatedData.length === 0 || isSyncing}
-                className="flex-1 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
-              >
-                {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <CloudUpload size={18} />}
-                Salvar na Nuvem
-              </button>
+              {/* Contêiner Flexível Horizontal para dispor o botão de Limpeza ao lado de Salvar na Nuvem */}
+              <div className="flex-1 flex gap-3 w-full">
+                <button 
+                  onClick={saveToSupabase}
+                  disabled={consolidatedData.length === 0 || isSyncing}
+                  className="flex-1 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
+                >
+                  {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <CloudUpload size={18} />}
+                  Salvar na Nuvem
+                </button>
+
+                <button 
+                  onClick={handleClearDatabase}
+                  disabled={isClearing}
+                  className="bg-red-600 text-white px-5 rounded-2xl font-black flex items-center justify-center hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
+                  title="Limpar toda a base histórica remota"
+                >
+                  {isClearing ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                </button>
+              </div>
             </div>
           </div>
         )}
       </section>
 
       <div className="flex items-center gap-3 mb-10 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
-        {isProcessing || isSyncing ? <Loader2 size={18} className="text-blue-500 animate-spin" /> : <AlertCircle size={18} className="text-blue-500" />}
+        {isProcessing || isSyncing || isClearing ? <Loader2 size={18} className="text-blue-500 animate-spin" /> : <AlertCircle size={18} className="text-blue-500" />}
         <p className="text-sm font-bold text-slate-600 text-left">{status}</p>
       </div>
 
@@ -342,7 +440,6 @@ export default function NegociacoesPage() {
                               {idx + 1}
                            </div>
                            <div className="text-left">
-                              {/* Integração sutil e elegante do Badge de Status ao lado do Nome */}
                               <div className="font-bold text-slate-900 uppercase text-sm text-left flex items-center gap-3">
                                 <span>{item.nome}</span>
                                 {(() => {

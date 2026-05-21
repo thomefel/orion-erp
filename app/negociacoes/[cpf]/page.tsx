@@ -19,7 +19,8 @@ import {
   XCircle,
   BookOpen,
   ShieldAlert,
-  Info // Importação adicionada para corrigir o Runtime TypeError
+  Info,
+  Phone // Adicionado para suporte visual da higienização
 } from 'lucide-react';
 
 const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL || '';
@@ -31,10 +32,12 @@ export default function DetalheNegociacao() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingCelular, setSavingCelular] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [devedor, setDevedor] = useState<any>(null);
 
   const [valorEditavel, setValorEditavel] = useState(0);
+  const [celularEditavel, setCelularEditavel] = useState("");
   const [msgAmigavel, setMsgAmigavel] = useState("");
   const [propostaDesconto, setPropostaDesconto] = useState(0);
 
@@ -43,6 +46,7 @@ export default function DetalheNegociacao() {
   const [statusLoadingConfissaoPDF, setStatusLoadingConfissaoPDF] = useState(false);
   const [isProtestModalOpen, setIsProtestModalOpen] = useState(false);
   const [isNegativacaoModalOpen, setIsNegativacaoModalOpen] = useState(false);
+  const [isContatoModalOpen, setIsContatoModalOpen] = useState(false);
 
   useEffect(() => {
     fetchDevedor();
@@ -58,6 +62,7 @@ export default function DetalheNegociacao() {
     if (data) {
       setDevedor(data);
       setValorEditavel(data.valor_total);
+      setCelularEditavel(data.celular || "");
       setMsgAmigavel(`Olá, ${data.nome.split(' ')[0]}. Sou do setor de conciliação da AC Odontologia. Notamos valores pendentes há mais de 60 dias. Gostaríamos de ouvir você para chegarmos a uma solução boa para ambos. Podemos conversar sobre uma condição especial hoje?`);
     }
     setLoading(false);
@@ -75,6 +80,16 @@ export default function DetalheNegociacao() {
     setSaving(true);
     await supabase.from('devedores_historicos').update({ valor_total: valorEditavel }).eq('cpf', cpf);
     setSaving(false);
+    fetchDevedor();
+  };
+
+  const handleUpdateCelular = async () => {
+    setSavingCelular(true);
+    const { error } = await supabase
+      .from('devedores_historicos')
+      .update({ celular: celularEditavel })
+      .eq('cpf', cpf);
+    setSavingCelular(false);
     fetchDevedor();
   };
 
@@ -97,7 +112,8 @@ export default function DetalheNegociacao() {
   };
 
   const enviarWhatsApp = async (texto: string) => {
-    alert("Simulação: Mensagem enviada para o paciente!");
+    const alvoMensagem = devedor?.celular ? devedor.celular.replace(/\D/g, '') : devedor?.cpf?.replace(/\D/g, '');
+    alert(`Simulação: Mensagem enviada para o número ${alvoMensagem} via Evolution API!`);
     if (!devedor?.notificacao_amigavel) toggleFlag('notificacao_amigavel', false);
   };
 
@@ -220,7 +236,7 @@ export default function DetalheNegociacao() {
       doc.setFont("helvetica", "bold"); doc.text("CLÁUSULA PRIMEIRA - DO RECONHECIMENTO DA DÍVIDA:", 20, y);
       doc.setFont("helvetica", "normal");
       y += 6;
-      const c1 = `O(A) DEVEDOR(A) reconhece expressamente, de forma irrevogável e irretratável, que possui uma dívida líquida, certa e exigível perante o CREDOR no valor total de R$ ${valorFmt}, decorrente do inadimplemento de tratamentos odontológicos contratados e executados, cuja inadimplência inicial remonta a ${dataFmt}.`;
+      const c1 = `O(A) DEVEDOR(A) reconhece expressamente, de forma irrevogável and irretratável, que possui uma dívida líquida, certa e exigível perante o CREDOR no valor total de R$ ${valorFmt}, decorrente do inadimplemento de tratamentos odontológicos contratados e executados, cuja inadimplência inicial remonta a ${dataFmt}.`;
       let splitC1 = doc.splitTextToSize(c1, 170);
       doc.text(splitC1, 20, y);
       y += (splitC1.length * 5) + 5;
@@ -286,7 +302,6 @@ export default function DetalheNegociacao() {
     }
   };
 
-  // Trava estrutural contra renderizações nulas
   if (loading) return <div className="p-20 text-center font-black text-slate-400 animate-pulse text-left uppercase text-[10px] tracking-widest">Carregando Dashboard Tático...</div>;
   if (!devedor) return <div className="p-20 text-center font-black text-slate-400 text-left uppercase text-[10px] tracking-widest">Registro não localizado ou inválido na Nuvem.</div>;
 
@@ -375,7 +390,7 @@ export default function DetalheNegociacao() {
                     <button onClick={() => enviarWhatsApp(msgAmigavel)} className="bg-slate-900 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg flex items-center gap-2 cursor-pointer">
                         <Send size={14} /> Enviar Mensagem
                     </button>
-                    <button onClick={() => toggleFlag('notificacao_amigavel', devedor?.notificacao_amigavel)} className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                    <button onClick={() => toggleFlag('notificacao_amigavel', devedor?.notificacao_amigavel)} className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
                         {devedor?.notificacao_amigavel ? 'Realizado' : 'Marcar Executado'}
                     </button>
                 </div>
@@ -383,11 +398,62 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 02. PROPOSTA DE ACORDO */}
+          {/* 02. HIGIENIZAÇÃO DE CONTATO (NOVA CAMADA DE DADOS DESATUALIZADOS) */}
+          <div className="flex gap-12 group">
+            <div className="flex flex-col items-center">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white shadow-amber-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
+                {devedor?.contato_desatualizado ? <Phone size={18} /> : <span className="font-black text-xs">02</span>}
+              </div>
+            </div>
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.contato_desatualizado ? 'bg-amber-50/20 border-amber-200 shadow-sm shadow-amber-50/50' : 'bg-slate-50/50 border-transparent'}`}>
+              <div className="flex justify-between items-start mb-4">
+                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Higienização e Validação Cadastral</h4>
+                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+65</span>
+              </div>
+              <p className="text-xs font-semibold text-slate-500 mb-4 uppercase">
+                Status Atual do Contato: <span className={devedor?.contato_desatualizado ? "text-amber-600 font-black" : "text-emerald-600 font-black"}>{devedor?.contato_desatualizado ? "Inacessível / Inválido" : "Validado / Ativo"}</span>
+              </p>
+              <div className="flex flex-wrap gap-4 items-end bg-white p-6 rounded-2xl border border-slate-100 shadow-inner">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Telefone Celular Vinculado</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ex: 47999999999" 
+                    value={celularEditavel} 
+                    onChange={(e) => setCelularEditavel(e.target.value)} 
+                    className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none text-xs focus:ring-2 focus:ring-blue-100" 
+                  />
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button 
+                    onClick={handleUpdateCelular}
+                    disabled={savingCelular}
+                    className="bg-slate-900 text-white px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    {savingCelular ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar Número
+                  </button>
+                  <button 
+                    onClick={() => setIsContatoModalOpen(true)}
+                    className="bg-white border border-slate-200 text-slate-600 px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
+                  >
+                    Localizar Dados
+                  </button>
+                  <button 
+                    onClick={() => toggleFlag('contato_desatualizado', devedor?.contato_desatualizado)} 
+                    className={`px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}
+                  >
+                    {devedor?.contato_desatualizado ? 'Sinalizar Desatualizado' : 'Marcar Inválido'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 03. PROPOSTA DE ACORDO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.proposta_enviada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">02</span>}
+                {devedor?.proposta_enviada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">03</span>}
               </div>
             </div>
             <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.proposta_enviada ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
@@ -411,11 +477,11 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 03. NOTIFICAÇÃO EXTRAJUDICIAL */}
+          {/* 04. NOTIFICAÇÃO EXTRAJUDICIAL */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-blue-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.notificacao_extrajudicial ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">03</span>}
+                {devedor?.notificacao_extrajudicial ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">04</span>}
               </div>
             </div>
             <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.notificacao_extrajudicial ? 'bg-blue-50/30 border-blue-100' : 'bg-slate-50/50 border-transparent'}`}>
@@ -439,11 +505,11 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 04. ACORDO FIRMADO */}
+          {/* 05. ACORDO FIRMADO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.acordo_firmado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">04</span>}
+                {devedor?.acordo_firmado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">05</span>}
               </div>
             </div>
             <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.acordo_firmado ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
@@ -460,11 +526,11 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 05. CONFISSÃO DE DÍVIDA */}
+          {/* 06. CONFISSÃO DE DÍVIDA */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-violet-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.confissao_assinada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">05</span>}
+                {devedor?.confissao_assinada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">06</span>}
               </div>
             </div>
             <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.confissao_assinada ? 'bg-violet-50/30 border-violet-100' : 'bg-slate-50/50 border-transparent'}`}>
@@ -491,11 +557,11 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 06. CARTÓRIO E RESTRIÇÕES */}
+          {/* 07. CARTÓRIO E RESTRIÇÕES */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.protesto_realizado ? 'bg-red-600 text-white shadow-red-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.protesto_realizado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">06</span>}
+                {devedor?.protesto_realizado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">07</span>}
               </div>
             </div>
             <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.protesto_realizado ? 'bg-red-50/30 border-red-100' : 'bg-slate-50/50 border-transparent'}`}>
@@ -514,11 +580,11 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 07. JUDICIALIZAÇÃO */}
+          {/* 08. JUDICIALIZAÇÃO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.judicializado ? 'bg-slate-900 text-white shadow-slate-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.judicializado ? <Scale size={20} /> : <span className="font-black text-xs">07</span>}
+                {devedor?.judicializado ? <Scale size={20} /> : <span className="font-black text-xs">08</span>}
               </div>
             </div>
             <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.judicializado ? 'bg-slate-900 text-white' : 'bg-slate-50/50 border-transparent'}`}>
@@ -541,7 +607,7 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 08. ENCERRAMENTO DO REGISTRO (DENTRO DO TRILHO) */}
+          {/* 09. ENCERRAMENTO DO REGISTRO (DENTRO DO TRILHO) */}
           <div className="flex gap-12 group pb-8">
             <div className="flex flex-col items-center">
               <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white border-2 border-slate-100 text-red-500 shadow-xl transition-all duration-500">
@@ -595,7 +661,7 @@ export default function DetalheNegociacao() {
                   <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
                   <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 1: Auditoria da Força Executiva do Título</h5>
                   <p className="text-xs leading-relaxed text-slate-500 text-left">
-                    Certifique-se de que o **Termo de Confissão de Dívida** gerado no Passo 05 está assinado digitalmente ou fisicamente pelo devedor e por **duas testemunhas identificadas com CPF**. O Provimento da CGJ/SC exige a qualificação estrita das testemunhas para conferir a natureza de título executivo extrajudicial (Art. 784, III, do CPC).
+                    Certifique-se de que o **Termo de Confissão de Dívida** gerado no Passo 06 está assinado digitalmente ou fisicamente pelo devedor e por **duas testemunhas identificadas com CPF**. O Provimento da CGJ/SC exige a qualificação estrita das testemunhas para conferir a natureza de título executivo extrajudicial (Art. 784, III, do CPC).
                   </p>
                 </div>
                 <div>
@@ -740,6 +806,69 @@ export default function DetalheNegociacao() {
                 className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer text-center text-white ${devedor?.protesto_realizado ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
               >
                 {devedor?.protesto_realizado ? 'Remover Flag de Restrição' : 'Marcar como Negativado'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- POPUP/MODAL INTERNO 3: MANUAL DE HIGIENIZAÇÃO CADASTRAL (SKIP TRACING) --- */}
+      {isContatoModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] border border-slate-100 shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="font-black text-lg text-slate-900 uppercase italic flex items-center gap-2">
+                  <BookOpen size={20} className="text-amber-500" /> Manual de Localização Cadastral
+                </h3>
+                <p className="text-xs text-slate-400 font-medium uppercase mt-0.5">Metodologias de Skip Tracing Legal • AC Odontologia</p>
+              </div>
+              <button onClick={() => setIsContatoModalOpen(false)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer">
+                <XCircle size={22} />
+              </button>
+            </div>
+            <div className="space-y-6 flex-1 pr-2 text-slate-600 text-sm overflow-y-auto">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3 text-amber-800 text-xs text-left">
+                <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold uppercase block mb-1 text-left">Inteligência Cadastral e LGPD:</span>
+                  A busca por dados de contato para fins de exercício regular de direito e cobrança extrajudicial é perfeitamente legal. Utilize canais oficiais e birôs homologados para enriquecimento.
+                </div>
+              </div>
+              <div className="relative border-l border-slate-100 pl-6 ml-3 space-y-6 text-left">
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 1: Auditoria Interna do Prontuário Clínico</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Antes de recorrer a ferramentas externas, audite a ficha de anamnese do paciente no Simples Dental. Verifique telefones fixos secundários, e-mails cadastrados, contatos de familiares ou responsáveis informados na primeira consulta da AC Odontologia.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 2: Bureau Governamental e Consulta Pública</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Utilize o portal oficial da Receita Federal do Brasil para emitir o Comprovante de Situação Cadastral no CPF. Isso valida se o CPF do paciente não sofreu fraudes, cancelamentos ou suspensões que inviabilizem o envio de notificações formais.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 3: Plataformas de Enriquecimento de Dados Privados</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Utilize os sistemas corporativos contratados de enriquecimento cadastral (ex: Assertiva, Procob, Localize Serasa ou BigData). Forneça o CPF do paciente para extrair o histórico de números de telefones móveis vinculados ao indivíduo, ordenados por score de recência e atividade no mercado.
+                  </p>
+                </div>
+                <div>
+                  <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                  <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 4: Filtro de WhatsApp e Validação Ativa</h5>
+                  <p className="text-xs leading-relaxed text-slate-500 text-left">
+                    Ao isolar os 3 números de maior score no birô, faça uma checagem rápida de presença de conta ativa do WhatsApp (foto de perfil, status). Identificado o canal correto, insira o número no campo de higienização do Orion para restaurar a comunicação automatizada.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 pt-4 mt-6 flex gap-3">
+              <button onClick={() => setIsContatoModalOpen(false)} className="w-full bg-slate-100 text-slate-500 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer text-center">
+                Fechar Manual
               </button>
             </div>
           </div>
