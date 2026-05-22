@@ -479,7 +479,7 @@ export default function DetalheNegociacao() {
                     type="text" 
                     placeholder="Ex: 47999999999" 
                     value={celularEditavel} 
-                    onChange={(e) => setCellularEditavel(e.target.value)} 
+                    onChange={(e) => setCelularEditavel(e.target.value)} 
                     className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none text-xs focus:ring-2 focus:ring-blue-100" 
                   />
                 </div>
