@@ -15,7 +15,7 @@ import {
   Trash2, 
   XCircle,
   Settings,
-  Activity
+  Pencil
 } from 'lucide-react';
 
 export default function CmmsPage() {
@@ -26,16 +26,17 @@ export default function CmmsPage() {
   
   // Controles de UI e Processamento
   const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState('Aguardando comandos da mesa técnica...');
-  const [isFormExpanded, setIsFormExpanded] = useState(true);
+  const [isEquipamentoFormExpanded, setIsEquipamentoFormExpanded] = useState(true);
+  const [isInsumoFormExpanded, setIsInsumoFormExpanded] = useState(true);
   const [selectedEquipamento, setSelectedEquipamento] = useState<any>(null); // Controle do Modal
+  const [editingManutencao, setEditingManutencao] = useState<any>(null); // Controle de Edição de Rotina
 
   // Formulário: Cadastro de Equipamento (Isolado)
   const [eqNome, setEqNome] = useState('');
   const [eqMarca, setEqMarca] = useState('');
   const [eqLocal, setEqLocal] = useState('');
   
-  // Formulário: Nova Manutenção Periódica (Dentro do Modal)
+  // Formulário: Nova/Edição de Manutenção Periódica (Dentro do Modal)
   const [mNome, setMNome] = useState('');
   const [mFreq, setMFreq] = useState('180');
   const [mUltimaExec, setMUltimaExec] = useState(new Date().toISOString().split('T')[0]);
@@ -85,16 +86,14 @@ export default function CmmsPage() {
         
         setManutencoesGlobais(formatadas);
         
-        // Sincronização do estado interno do modal ativo
+        // Sincronização del estado interno do modal ativo
         if (selectedEquipamento) {
           const atualizado = eqData?.find(e => e.id === selectedEquipamento.id);
           if (atualizado) setSelectedEquipamento(atualizado);
         }
       }
-      setStatus('Módulo CMMS operando em barramento global estável. RLS ativo.');
     } catch (err: any) {
       console.error('Erro de execução no carregamento:', err);
-      setStatus(`Erro de sincronização: ${err.message || 'Falha na leitura contínua'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -117,7 +116,20 @@ export default function CmmsPage() {
     setPassosInput(passosInput.filter((_, i) => i !== index));
   };
 
-  // OPERAÇÃO 1: Salvar Equipamento Isolado (Payload puro, técnica limpa do módulo fiscal)
+  // Ativar Modo de Edição de uma Rotina Específica
+  const handleStartEditManutencao = (m: any) => {
+    setEditingManutencao(m);
+    setMNome(m.nome);
+    setMFreq(String(m.frequencia_dias));
+    setMUltimaExec(m.data_ultima_execucao);
+    if (m.cmms_passos_manutencao && m.cmms_passos_manutencao.length > 0) {
+      setPassosInput(m.cmms_passos_manutencao.map((p: any) => p.descricao));
+    } else {
+      setPassosInput(['']);
+    }
+  };
+
+  // OPERAÇÃO 1: Salvar Equipamento Isolado
   const handleSaveEquipamento = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eqNome.trim()) {
@@ -125,7 +137,6 @@ export default function CmmsPage() {
       return;
     }
     setIsProcessing(true);
-    setStatus('Gravando ativo clínico na partição de segurança...');
     try {
       const { error } = await supabase
         .from('cmms_equipamentos')
@@ -134,17 +145,15 @@ export default function CmmsPage() {
       if (error) throw error;
 
       setEqNome(''); setEqMarca(''); setEqLocal('');
-      setStatus(`Ativo clínico "${eqNome}" catalogado com sucesso.`);
       fetchInitialData();
     } catch (err: any) {
       console.error('Erro de execução:', err);
-      setStatus(`Erro operacional: ${err.message || 'Falha ao salvar registro físico.'}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // OPERAÇÃO 2: Salvar Tarefa de Manutenção Periódica vinculada ao Ativo (Dentro do Modal)
+  // OPERAÇÃO 2: Salvar ou Editar Tarefa de Manutenção Periódica vinculada ao Ativo (Dentro do Modal)
   const handleSaveManutencaoItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEquipamento || !mNome.trim()) {
@@ -152,27 +161,51 @@ export default function CmmsPage() {
       return;
     }
     setIsProcessing(true);
-    setStatus('Vinculando nova rotina técnica ao prontuário do ativo...');
     try {
-      // 1. Inserir a rotina vinculada ao id do ativo aberto
-      const { data: newMan, error: manErr } = await supabase
-        .from('cmms_manutencoes_periodicas')
-        .insert([{
-          equipamento_id: selectedEquipamento.id,
-          nome: mNome.trim(),
-          frequencia_dias: parseInt(mFreq) || 180,
-          data_ultima_execucao: mUltimaExec
-        }])
-        .select()
-        .single();
+      let manutencaoId = '';
 
-      if (manErr) throw manErr;
+      if (editingManutencao) {
+        // MODO ATUALIZAÇÃO
+        const { error: manErr } = await supabase
+          .from('cmms_manutencoes_periodicas')
+          .update({
+            nome: mNome.trim(),
+            frequencia_dias: parseInt(mFreq) || 180,
+            data_ultima_execucao: mUltimaExec
+          })
+          .eq('id', editingManutencao.id);
 
-      // 2. Inserir os passos associados caso existam
+        if (manErr) throw manErr;
+        manutencaoId = editingManutencao.id;
+
+        // Expurgar passos antigos para substituição limpa em lote
+        const { error: delPassosErr } = await supabase
+          .from('cmms_passos_manutencao')
+          .delete()
+          .eq('manutencao_id', manutencaoId);
+        
+        if (delPassosErr) throw delPassosErr;
+      } else {
+        // MODO INSERÇÃO
+        const { data: newMan, error: manErr } = await supabase
+          .from('cmms_manutencoes_periodicas}').insert([{
+            equipamento_id: selectedEquipamento.id,
+            nome: mNome.trim(),
+            frequencia_dias: parseInt(mFreq) || 180,
+            data_ultima_execucao: mUltimaExec
+          }])
+          .select()
+          .single();
+
+        if (manErr) throw manErr;
+        manutencaoId = newMan.id;
+      }
+
+      // Inserir os passos associados caso existam
       const passosFiltrados = passosInput.map(p => p.trim()).filter(p => p !== '');
       if (passosFiltrados.length > 0) {
         const payload = passosFiltrados.map((descricao, index) => ({
-          manutencao_id: newMan.id,
+          manutencao_id: manutencaoId,
           ordem_passo: index + 1,
           descricao
         }));
@@ -181,11 +214,11 @@ export default function CmmsPage() {
       }
 
       setMNome(''); setMFreq('180'); setPassosInput(['']);
-      setStatus('Nova rotina de manutenção calculada e acoplada ao ativo.');
+      setEditingManutencao(null);
       fetchInitialData();
     } catch (err: any) {
-      console.error('Erro ao acoplar rotina:', err);
-      alert(`Falha na inserção técnica: ${err.message}`);
+      console.error('Erro ao salvar rotina:', err);
+      alert(`Falha na gravação técnica: ${err.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -204,11 +237,41 @@ export default function CmmsPage() {
       }]);
       if (error) throw error;
       setInsNome(''); setInsQtdAtual('5'); setInsQtdMin('2');
-      setStatus(`Insumo técnico "${insNome}" integrado ao estoque.`);
       fetchInitialData();
     } catch (err: any) {
       console.error(err);
-      setStatus('Falha ao catalogar insumo.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // OPERAÇÃO 3.2: Atualizar Quantidade de Estoque de Insumo por alteração direta
+  const handleUpdateInsumoQtd = async (id: string, novaQtd: number) => {
+    try {
+      const { error } = await supabase
+        .from('cmms_insumos')
+        .update({ quantidade_atual: novaQtd })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setInsumos(prev => prev.map(item => item.id === id ? { ...item, House: item, quantidade_atual: novaQtd } : item));
+    } catch (err) {
+      console.error('Erro ao atualizar quantidade do insumo:', err);
+    }
+  };
+
+  // OPERAÇÃO 3.3: Excluir Insumo de Almoxarifado
+  const handleDeleteInsumo = async (id: string, nome: string) => {
+    if (!confirm(`Deseja excluir permanentemente o insumo "${nome}" do estoque?`)) return;
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase.from('cmms_insumos').delete().eq('id', id);
+      if (error) throw error;
+      fetchInitialData();
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao excluir insumo do banco.');
     } finally {
       setIsProcessing(false);
     }
@@ -221,7 +284,6 @@ export default function CmmsPage() {
     try {
       const { error } = await supabase.from('cmms_equipamentos').delete().eq('id', id);
       if (error) throw error;
-      setStatus('Ativo e dependências removidos da infraestrutura.');
       fetchInitialData();
     } catch (err: any) {
       console.error(err);
@@ -238,7 +300,6 @@ export default function CmmsPage() {
     try {
       const { error } = await supabase.from('cmms_manutencoes_periodicas').delete().eq('id', id);
       if (error) throw error;
-      setStatus('Rotina técnica excluída do prontuário do ativo.');
       fetchInitialData();
     } catch (err: any) {
       console.error(err);
@@ -256,25 +317,25 @@ export default function CmmsPage() {
         <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-2 uppercase italic text-left">
           Orion <span className="text-blue-600 not-italic">CMMS</span>
         </h1>
-        <p className="text-slate-500 font-medium text-left">Controle de Ativos Clínicos e Engenharia de Manutenção • AC Odontologia</p>
+        <p className="text-slate-500 font-medium text-left">Controle de Ativos e Manutenção • AC Odontologia</p>
       </header>
 
-      {/* SEÇÃO 1: CADASTRO RÁPIDO E ISOLADO DE EQUIPAMENTO */}
-      <section className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden mb-10 text-left">
+      {/* COMPONENTE FORMULÁRIO 1: CADASTRO DE EQUIPAMENTO (LARGURA COMPLETA) */}
+      <section className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden mb-6 text-left w-full">
         <div 
-          onClick={() => setIsFormExpanded(!isFormExpanded)}
+          onClick={() => setIsEquipamentoFormExpanded(!isEquipamentoFormExpanded)}
           className="p-6 bg-slate-50/50 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
         >
           <div className="flex items-center gap-3">
-             {isFormExpanded ? <ChevronUp className="text-blue-600" size={20} /> : <ChevronDown className="text-blue-600" size={20} />}
+             {isEquipamentoFormExpanded ? <ChevronUp className="text-blue-600" size={20} /> : <ChevronDown className="text-blue-600" size={20} />}
              <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
-               {isFormExpanded ? 'Recolher Inclusão Primária' : 'Cadastrar Novo Equipamento Clínico'}
+               Cadastrar Novo Equipamento
              </span>
           </div>
           <Wrench size={16} className="text-slate-300" />
         </div>
 
-        {isFormExpanded && (
+        {isEquipamentoFormExpanded && (
           <form onSubmit={handleSaveEquipamento} className="p-8 animate-in slide-in-from-top-4 duration-300 text-left">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
@@ -286,7 +347,7 @@ export default function CmmsPage() {
                 <input type="text" value={eqMarca} onChange={e => setEqMarca(e.target.value)} placeholder="Ex: Schulz MSV 12 / Gnatus" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Localização Física Interna</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Localização</label>
                 <input type="text" value={eqLocal} onChange={e => setEqLocal(e.target.value)} placeholder="Ex: Sala Técnica, Consultório 02" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" />
               </div>
             </div>
@@ -304,17 +365,11 @@ export default function CmmsPage() {
         )}
       </section>
 
-      {/* MONITOR DE STATUS DA MESA OPERACIONAL */}
-      <div className="flex items-center gap-3 mb-10 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
-        {isProcessing ? <Loader2 size={18} className="text-blue-500 animate-spin" /> : <Activity size={18} className="text-blue-500" />}
-        <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">{status}</p>
-      </div>
 
-      {/* SEÇÃO 2: ÁRVORE E LISTA DE EQUIPAMENTOS CADASTRADOS */}
-      <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left">
+      <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left w-full">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">
           <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            Inventário de Ativos Físicos da Clínica
+            Inventário de Equipamentos
           </span>
         </div>
 
@@ -325,10 +380,10 @@ export default function CmmsPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/30 border-b border-slate-100 text-slate-400">
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider">Identificação do Equipamento</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider">Nome do Equipamento</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider">Marca / Modelo</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider">Localização</th>
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Ações de Engenharia</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Rotinas de Manutenção</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -360,34 +415,33 @@ export default function CmmsPage() {
         )}
       </section>
 
-      {/* SEÇÃO 3: CRONOGRAMA TÁTICO GLOBAL (LINHA DO TEMPO) */}
-      <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left">
-        <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2">
+      <section className="bg-blue-50/10 rounded-[32px] shadow-md border-2 border-blue-500/30 overflow-hidden mb-10 text-left w-full">
+        <div className="p-6 bg-blue-50/40 border-b border-blue-100 flex items-center gap-2">
           <Calendar size={14} className="text-blue-600" />
-          <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            Linha do Tempo Regulatória e de Preventivas (Geral da Clínica)
+          <span className="font-black text-[10px] uppercase tracking-[0.2em] text-blue-700">
+            Cronograma de Manutenção
           </span>
         </div>
 
         {manutencoesGlobais.length === 0 ? (
-          <div className="py-16 text-center text-slate-300 font-bold uppercase text-[10px] tracking-widest">Nenhuma tarefa técnica parametrizada em nenhum ativo.</div>
+          <div className="py-16 text-center text-slate-400 font-bold uppercase text-[10px] tracking-widest">Nenhuma tarefa técnica parametrizada em nenhum ativo.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/30 border-b border-slate-100 text-slate-400">
+                <tr className="bg-blue-50/20 border-b border-blue-100 text-blue-600/70">
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider">Ativo / Local</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider">Rotina Preventiva</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Próxima Execução</th>
-                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Status Crítico</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-blue-100/50">
                 {manutencoesGlobais.map((m) => {
                   const isVencido = m.diasRestantes <= 0;
                   const [ano, mes, dia] = m.proxima_execucao.split('-');
                   return (
-                    <tr key={m.id} className="hover:bg-slate-50/40 transition-colors">
+                    <tr key={m.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="p-6">
                         <div className="font-bold text-slate-900 uppercase text-xs">{m.cmms_equipamentos?.nome}</div>
                         <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">{m.cmms_equipamentos?.localizacao}</div>
@@ -397,7 +451,7 @@ export default function CmmsPage() {
                         {m.cmms_passos_manutencao && m.cmms_passos_manutencao.length > 0 && (
                           <div className="mt-1 flex gap-1">
                             {m.cmms_passos_manutencao.map((p: any) => (
-                              <span key={p.id} className="bg-slate-50 border border-slate-200 rounded px-1 text-[9px] font-mono text-slate-500" title={p.descricao}>
+                              <span key={p.id} className="bg-white border border-blue-200/60 rounded px-1 text-[9px] font-mono text-blue-600" title={p.descricao}>
                                 ST-{p.ordem_passo}
                               </span>
                             ))}
@@ -409,7 +463,7 @@ export default function CmmsPage() {
                         <span className={`inline-block px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${
                           isVencido ? 'bg-red-50 text-red-700 border-red-200 animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         }`}>
-                          {isVencido ? `Atrasada há ${Math.abs(m.diasRestantes)} dias` : `Em dia (${m.diasRestantes} dias rest.)`}
+                          {isVencido ? `Atrasada há ${Math.abs(m.diasRestantes)} dias` : `Em dia (${m.diasRestantes} dias)`}
                         </span>
                       </td>
                     </tr>
@@ -421,72 +475,113 @@ export default function CmmsPage() {
         )}
       </section>
 
-      {/* SEÇÃO 4: ALMOXARIFADO TÉCNICO (INSUMOS) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-        <div className="bg-white rounded-[32px] border border-slate-100 p-6 shadow-sm text-left h-fit">
-          <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2 mb-4">
-            <Box size={14} className="text-blue-600" /> Catalogar Insumo / Periférico
-          </span>
-          <form onSubmit={handleSaveInsumo} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Nome do Insumo *</label>
-              <input type="text" value={insNome} onChange={e => setInsNome(e.target.value)} placeholder="Ex: Pilha AA Fotopolimerizador" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" required />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Atual</label>
-                <input type="number" value={insQtdAtual} onChange={e => setInsQtdAtual(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Mínimo</label>
-                <input type="number" value={insQtdMin} onChange={e => setInsQtdMin(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
-              </div>
-            </div>
-            <button type="submit" className="w-full bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px] py-3 flex items-center justify-center gap-2 hover:bg-slate-800 transition-all cursor-pointer">
-              Adicionar ao Inventário
-            </button>
-          </form>
+      <section className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden mb-10 text-left w-full">
+        <div 
+          onClick={() => setIsInsumoFormExpanded(!isInsumoFormExpanded)}
+          className="p-6 bg-slate-50/50 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+             {isInsumoFormExpanded ? <ChevronUp className="text-blue-600" size={20} /> : <ChevronDown className="text-blue-600" size={20} />}
+             <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
+               Cadastrar Novo Insumo
+             </span>
+          </div>
+          <Box size={16} className="text-slate-300" />
         </div>
 
-        <div className="md:col-span-2 bg-white rounded-[32px] border border-slate-100 overflow-hidden shadow-sm">
-          <div className="p-6 bg-slate-50/50 border-b border-slate-100">
-            <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">Almoxarifado de Peças e Insumos Periféricos</span>
-          </div>
-          {insumos.length === 0 ? (
-            <div className="py-16 text-center text-slate-300 font-bold uppercase text-[10px] tracking-widest">Almoxarifado vazio.</div>
-          ) : (
-            <div className="max-h-[260px] overflow-y-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/10 border-b border-slate-100 text-slate-400">
-                    <th className="p-4 text-[10px] font-black uppercase tracking-wider">Item Técnico</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-wider text-center">Quantidade</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-wider text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {insumos.map((item) => {
-                    const isCritico = item.quantidade_atual <= item.quantidade_minima;
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50/30 transition-colors">
-                        <td className="p-4 font-bold text-slate-800 uppercase text-xs">{item.nome}</td>
-                        <td className="p-4 text-center font-mono font-black text-xs text-slate-900">{item.quantidade_atual} UN</td>
-                        <td className="p-4 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase border tracking-wider ${
-                            isCritico ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-slate-50 text-slate-500 border-slate-200'
-                          }`}>
-                            {isCritico ? 'Comprar Urgente' : 'Estoque Saudável'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {isInsumoFormExpanded && (
+          <form onSubmit={handleSaveInsumo} className="p-8 animate-in slide-in-from-top-4 duration-300 text-left">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nome do Insumo *</label>
+                <input type="text" value={insNome} onChange={e => setInsNome(e.target.value)} placeholder="Ex: Pilha AA Fotopolimerizador" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 outline-none" required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Inicial</label>
+                <input type="number" value={insQtdAtual} onChange={e => setInsQtdAtual(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Mínimo Crítico</label>
+                <input type="number" value={insQtdMin} onChange={e => setInsQtdMin(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" />
+              </div>
             </div>
-          )}
+            <div className="mt-6 flex justify-end border-t border-slate-50 pt-4">
+              <button 
+                type="submit" 
+                disabled={isProcessing}
+                className="bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] px-8 py-4 flex items-center gap-2 hover:bg-slate-800 disabled:bg-slate-100 transition-all shadow-xl cursor-pointer"
+              >
+                {isProcessing ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                Adicionar ao Inventário
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+
+      <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left w-full">
+        <div className="p-6 bg-slate-50/50 border-b border-slate-100">
+          <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
+            Almoxarifado
+          </span>
         </div>
-      </div>
+
+        {insumos.length === 0 ? (
+          <div className="py-16 text-center text-slate-300 font-bold uppercase text-[10px] tracking-widest">Almoxarifado vazio.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/30 border-b border-slate-100 text-slate-400">
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Item</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Quantidade</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Status</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Excluir</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {insumos.map((item) => {
+                  const isCritico = item.quantidade_atual <= item.quantidade_minima;
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/30 transition-colors">
+                      <td className="p-6 font-bold text-slate-800 uppercase text-xs text-left">{item.nome}</td>
+                      <td className="p-6 text-center">
+                        <input 
+                          type="number" 
+                          value={item.quantidade_atual} 
+                          min={1}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            handleUpdateInsumoQtd(item.id, val);
+                          }}
+                          className="w-24 p-2 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs font-mono font-black text-slate-900 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                        />
+                      </td>
+                      <td className="p-6 text-center">
+                        <span className={`inline-block px-3 py-1 rounded-full text-[9px] font-black uppercase border tracking-wider ${
+                          isCritico ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-slate-50 text-slate-500 border-slate-200'
+                        }`}>
+                          {isCritico ? 'Comprar Urgente' : 'Estoque Saudável'}
+                        </span>
+                      </td>
+                      <td className="p-6 text-center">
+                        <button 
+                          type="button"
+                          onClick={() => handleDeleteInsumo(item.id, item.nome)}
+                          className="text-slate-300 hover:text-red-500 p-2 border border-slate-100 bg-white hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                          title="Excluir insumo do estoque"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* --- POPUP MODAL TÁTICO: GESTÃO DE ROTINAS DO ATIVO SELECIONADO --- */}
       {selectedEquipamento && (
@@ -503,7 +598,16 @@ export default function CmmsPage() {
                   {selectedEquipamento.nome} • {selectedEquipamento.marca_modelo || 'SEM MARCA'} — Mód. Local: {selectedEquipamento.localizacao || 'GERAL'}
                 </p>
               </div>
-              <button onClick={() => { setSelectedEquipamento(null); setMNome(''); setPassosInput(['']); }} className="p-2 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer">
+              <button 
+                onClick={() => { 
+                  setSelectedEquipamento(null); 
+                  setMNome(''); 
+                  setMFreq('180'); 
+                  setPassosInput(['']); 
+                  setEditingManutencao(null); 
+                }} 
+                className="p-2 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer"
+              >
                 <XCircle size={24} />
               </button>
             </div>
@@ -522,40 +626,58 @@ export default function CmmsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
-                    {manutencoesDoAtivoSelecionado.map((m) => (
-                      <div key={m.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex justify-between items-start text-left">
-                        <div className="space-y-1 text-left">
-                          <p className="font-black text-xs text-slate-900 uppercase tracking-wide">{m.nome}</p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Frequência: A cada {m.frequencia_dias} dias</p>
-                          <p className="text-[10px] font-bold text-blue-600 uppercase">Próxima: {m.proxima_execucao.split('-').reverse().join('/')}</p>
-                          
-                          {m.cmms_passos_manutencao && m.cmms_passos_manutencao.length > 0 && (
-                            <div className="pt-2 space-y-1 text-left">
-                              <span className="block text-[9px] font-black text-slate-400 uppercase">Procedimento Operacional:</span>
-                              {m.cmms_passos_manutencao.map((p: any) => (
-                                <p key={p.id} className="text-[10px] text-slate-600 font-medium pl-2 border-l border-slate-200">
-                                  <span className="font-mono text-slate-400 font-bold">{p.ordem_passo}.</span> {p.descricao}
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <button 
-                          onClick={() => handleDeleteManutencaoEspecifica(m.id)}
-                          className="p-2 text-slate-300 hover:text-red-600 hover:bg-white rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                    {manutencoesDoAtivoSelecionado.map((m) => {
+                      const isEditingThis = editingManutencao?.id === m.id;
+                      return (
+                        <div 
+                          key={m.id} 
+                          className={`p-4 rounded-2xl border transition-all flex justify-between items-start text-left ${
+                            isEditingThis ? 'bg-blue-50/60 border-blue-500 ring-2 ring-blue-500/10' : 'bg-slate-50 border-slate-100'
+                          }`}
                         >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    ))}
+                          <div className="space-y-1 text-left">
+                            <p className="font-black text-xs text-slate-900 uppercase tracking-wide">{m.nome}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">Frequência: A cada {m.frequencia_dias} dias</p>
+                            <p className="text-[10px] font-bold text-blue-600 uppercase">Próxima: {m.proxima_execucao.split('-').reverse().join('/')}</p>
+                            
+                            {m.cmms_passos_manutencao && m.cmms_passos_manutencao.length > 0 && (
+                              <div className="pt-2 space-y-1 text-left">
+                                <span className="block text-[9px] font-black text-slate-400 uppercase">Procedimento Operacional:</span>
+                                {m.cmms_passos_manutencao.map((p: any) => (
+                                  <p key={p.id} className="text-[10px] text-slate-600 font-medium pl-2 border-l border-slate-200">
+                                    <span className="font-mono text-slate-400 font-bold">{p.ordem_passo}.</span> {p.descricao}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => handleStartEditManutencao(m)}
+                              className="p-2 text-slate-300 hover:text-blue-600 hover:bg-white rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                              title="Editar esta rotina"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteManutencaoEspecifica(m.id)}
+                              className="p-2 text-slate-300 hover:text-red-600 hover:bg-white rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                              title="Excluir rotina"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Painel Direito: Formulário de Nova Rotina */}
+              {/* Painel Direito: Formulário de Nova Rotina / Edição */}
               <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 text-left h-fit">
                 <span className="block text-[10px] font-black uppercase tracking-wider text-blue-600 border-b border-blue-100 pb-1 mb-4">
-                  Acoplar Nova Rotina Técnico-Operacional
+                  {editingManutencao ? 'Editar Rotina Técnica Ativa' : 'Acoplar Nova Rotina Técnico-Operacional'}
                 </span>
                 <form onSubmit={handleSaveManutencaoItem} className="space-y-4 text-left">
                   <div>
@@ -597,7 +719,7 @@ export default function CmmsPage() {
                   </div>
 
                   <button type="submit" className="w-full mt-4 bg-slate-900 hover:bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest py-3 rounded-xl shadow-md transition-all cursor-pointer">
-                    Salvar e Configurar Agenda
+                    {editingManutencao ? 'Atualizar Rotina Técnica' : 'Salvar e Configurar Agenda'}
                   </button>
                 </form>
               </div>
@@ -606,7 +728,16 @@ export default function CmmsPage() {
 
             {/* Footer do Modal */}
             <div className="border-t border-slate-100 pt-4 mt-6 flex justify-end">
-              <button onClick={() => { setSelectedEquipamento(null); setMNome(''); setPassosInput(['']); }} className="bg-slate-100 text-slate-500 hover:bg-slate-200 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer">
+              <button 
+                onClick={() => { 
+                  setSelectedEquipamento(null); 
+                  setMNome(''); 
+                  setMFreq('180'); 
+                  setPassosInput(['']); 
+                  setEditingManutencao(null); 
+                }} 
+                className="bg-slate-100 text-slate-500 hover:bg-slate-200 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer"
+              >
                 Fechar Prontuário
               </button>
             </div>
