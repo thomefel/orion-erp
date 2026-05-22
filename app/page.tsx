@@ -86,7 +86,7 @@ export default function HomePage() {
             <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic group-hover:text-orange-600 transition-colors">CMMS</h2>
             <p className="text-lg font-bold text-slate-400 mt-4 uppercase tracking-tight text-left">Gestão de Ativos</p>
             <p className="text-slate-500 mt-6 leading-relaxed text-left">
-              Controle a manutenção preventiva de todos os equipamentos do consultório, bem como o estoque de insumos não odontológicos.
+              Controle da manutenção preventiva de todos os equipamentos do consultório, bem como do estoque de insumos não odontológicos.
             </p>
           </div>
           <div className="p-12 bg-slate-50 rounded-[48px] group-hover:bg-orange-600 group-hover:text-white transition-all duration-500 group-hover:scale-105 shadow-2xl shadow-orange-100">

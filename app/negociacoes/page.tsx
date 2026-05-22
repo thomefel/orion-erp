@@ -71,6 +71,7 @@ export default function NegociacoesPage() {
           notificacao_amigavel: item.notificacao_amigavel,
           proposta_enviada: item.proposta_enviada,
           notificacao_extrajudicial: item.notificacao_extrajudicial,
+          notificacao_rtd: item.notificacao_rtd, // Acoplamento dinâmico para controle de notificação cartorária
           acordo_firmado: item.acordo_firmado,
           confissao_assinada: item.confissao_assinada,
           protesto_realizado: item.protesto_realizado,
@@ -98,7 +99,8 @@ export default function NegociacoesPage() {
     if (item.protesto_realizado) return { label: 'Protestado', classes: 'bg-red-50 text-red-700 border-red-200' };
     if (item.confissao_assinada) return { label: 'Confissão Assinada', classes: 'bg-violet-50 text-violet-700 border-violet-200' };
     if (item.acordo_firmado) return { label: 'Acordo Firmado', classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-    if (item.notificacao_extrajudicial) return { label: 'Notif. Extrajudicial', classes: 'bg-blue-50 text-blue-700 border-blue-200' };
+    if (item.notificacao_rtd) return { label: 'Notificação RTD', classes: 'bg-orange-50 text-orange-700 border-orange-200' };
+    if (item.notificacao_extrajudicial) return { label: 'Notif. Simples', classes: 'bg-blue-50 text-blue-700 border-blue-200' };
     if (item.proposta_enviada) return { label: 'Proposta Enviada', classes: 'bg-amber-50 text-amber-700 border-amber-200' };
     if (item.notificacao_amigavel) return { label: 'Abordagem Inicial', classes: 'bg-teal-50 text-teal-700 border-teal-200' };
     return { label: 'Sem Ações', classes: 'bg-slate-50 text-slate-400 border-slate-200' };
@@ -215,7 +217,8 @@ export default function NegociacoesPage() {
               diasAtraso: diff,
               parcelasQtd: 1,
               celular: patientsData[item.cpf] || '',
-              contato_desatualizado: false
+              contato_desatualizado: false,
+              notificacao_rtd: false
             };
           } else {
             aggregated[chave].valorTotal += item.valor;
