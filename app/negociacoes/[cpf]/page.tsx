@@ -20,7 +20,8 @@ import {
   BookOpen,
   ShieldAlert,
   Info,
-  Phone // Adicionado para suporte visual da higienização
+  Phone,
+  Hourglass // Ícone de ampulheta adicionado para o estado de espera
 } from 'lucide-react';
 
 const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL || '';
@@ -34,6 +35,7 @@ export default function DetalheNegociacao() {
   const [saving, setSaving] = useState(false);
   const [savingCelular, setSavingCelular] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false); // Estado de controle de envio ativo
   const [devedor, setDevedor] = useState<any>(null);
 
   const [valorEditavel, setValorEditavel] = useState(0);
@@ -111,10 +113,57 @@ export default function DetalheNegociacao() {
     }
   };
 
+  // --- MOTOR REAL DE INTEGRAÇÃO COM A EVOLUTION API (COM TRATAMENTO DE 9º DÍGITO) ---
+  const realizarChamadaApi = async (numero: string, texto: string) => {
+    let numLimpo = numero.replace(/\D/g, '');
+    if (numLimpo.length > 0 && !numLimpo.startsWith('55')) numLimpo = '55' + numLimpo;
+    try {
+      const res = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': EVO_TOKEN },
+        body: JSON.stringify({ number: numLimpo, text: texto, delay: 1200 })
+      });
+      return { ok: res.ok, status: res.status, data: await res.json(), numUsado: numLimpo };
+    } catch (e) {
+      return { ok: false, status: 500, data: null, numUsado: numLimpo };
+    }
+  };
+
   const enviarWhatsApp = async (texto: string) => {
     const alvoMensagem = devedor?.celular ? devedor.celular.replace(/\D/g, '') : devedor?.cpf?.replace(/\D/g, '');
-    alert(`Simulação: Mensagem enviada para o número ${alvoMensagem} via Evolution API!`);
-    if (!devedor?.notificacao_amigavel) toggleFlag('notificacao_amigavel', false);
+    if (!alvoMensagem || alvoMensagem.trim() === '') {
+      alert("Erro operacional: Nenhum canal de contato ou identificador válido localizado para este devedor.");
+      return;
+    }
+
+    setSendingMessage(true); // Ativa o overlay de espera e a translucidez
+
+    let result = await realizarChamadaApi(alvoMensagem, texto);
+    let sucessoTotal = false;
+
+    if (result.ok) sucessoTotal = true;
+    else if (result.status === 400) {
+      const errorStr = JSON.stringify(result.data).toLowerCase();
+      if (errorStr.includes('"exists":false') || errorStr.includes('not exists')) {
+        // Fallback tático: Inverte a presença do nono dígito para contingência automática
+        let numAlt = result.numUsado.length === 13 
+          ? result.numUsado.slice(0, 4) + result.numUsado.slice(5) 
+          : result.numUsado.slice(0, 4) + '9' + result.numUsado.slice(4);
+        const result2 = await realizarChamadaApi(numAlt, texto);
+        if (result2.ok) sucessoTotal = true;
+      }
+    }
+
+    setSendingMessage(false); // Remove o estado de espera trazendo o componente ao normal
+
+    if (sucessoTotal) {
+      alert("Sucesso: Mensagem de conciliação transmitida em tempo real via Evolution API!");
+      if (!devedor?.notificacao_amigavel) toggleFlag('notificacao_amigavel', false);
+    } else {
+      alert("Erro de Conexão: Falha ao transmitir mensagem. Verifique a ativação da instância ou a higienização do número.");
+      // Acoplamento lógico: Se o envio falhar de forma definitiva, marca automaticamente a flag do passo 02 como desatualizada/inválida
+      if (!devedor?.contato_desatualizado) toggleFlag('contato_desatualizado', false);
+    }
   };
 
   // --- MOTOR DE EMISSÃO DE PDF JURÍDICO: NOTIFICAÇÃO EXTRAJUDICIAL ---
@@ -162,7 +211,7 @@ export default function DetalheNegociacao() {
       const dataFmt = devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : '';
       const valorFmt = valorEditavel.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       
-      const textoCorpo = `Por meio deste instrumento formal, servimo-nos da presente via para constituílo(a) oficialmente em MORA, nos estritos termos dos artigos 394, 395 e 397 da Lei nº 10.406/2002 (Código Civil Brasileiro), em virtude do inadimplemento de obrigações financeiras líquidas, certas e exigíveis junto a esta instituição notificante.\n\nConstata-se em nossos registros cadastrais e contábeis a existência de um passivo consolidado no montante total de R$ ${valorFmt}, correspondente a ${devedor?.parcelas_qtd || 0} parcela(s) em aberto decorrente(s) de prestação de serviços odontológicos contratados, cujo vencimento inicial operou-se em ${dataFmt}.\n\nMalgrado os reiterados esforços e tentativas de composição amigável promovidos pelo nosso departamento de conciliação interna, não obtivemos, até a presente data, a devida regularização ou qualquer manifestação plausível para adimplemento do saldo devedor.\n\nDiante do exposto, ASSINÁMOS o prazo improrrogável de 48 (quarenta e oito) horas, a contar do recebimento desta interlocução, para que Vossa Senhoria proceda à liquidação do referido débito ou compareça à nossa sede operacional para formalizar termo de confissão de dívida.\n\nA inércia ou recusa no cumprimento da presente determinação extrajudicial ensejará a imediata adoção de medidas coercitivas legais cabíveis, as quais incluem, mas não se limitam a: (i) protesto público do título perante o Cartório de Registro de Títulos e Documentos da Comarca de Itapema/SC; (ii) inclusão restritiva de seu nome junto aos órgãos de proteção ao crédito (SPC/SERASA); e (iii) propositura de Ação Judicial de Execução ou Cobrança cabível, respondendo o devedor por perdas, danos, juros moratórios, correção monetária e honorários advocatícios sucumbenciais, ex vi do artigo 389 do Código Civil Brasileiro.`;
+      const textoCorpo = `Por meio deste instrumento formal, servimo-nos da presente via para constituílo(a) oficialmente em MORA, nos estritos termos dos artigos 394, 395 e 397 da Lei nº 10.406/2002 (Código Civil Brasileiro), em virtude do inadimplemento de obrigações financeiras líquidas, certas e exigíveis junto a esta instituição notificante.\n\nConstata-se em nossos registros cadastrais e contábeis a existência de um passivo consolidado no montante total de R$ ${valorFmt}, correspondente a ${devedor?.parcelas_qtd || 0} parcela(s) em aberto decorrente(s) de prestação de serviços odontológicos contratados, cujo vencimento inicial operou-se em ${dataFmt}.\n\nMalgrado os reiterados esforços e tentativas de composição amigável promovidos pelo nosso departamento de conciliação interna, não obtivemos, até a presente data, a devida regularização ou qualquer manifestation plausível para adimplemento do saldo devedor.\n\nDiante do exposto, ASSINÁMOS o prazo improrrogável de 48 (quarenta e oito) horas, a contar do recebimento desta interlocução, para que Vossa Senhoria proceda à liquidação do referido débito ou compareça à nossa sede operacional para formalizar termo de confissão de dívida.\n\nA inércia ou recusa no cumprimento da presente determinação extrajudicial ensejará a imediata adoção de medidas coercitivas legais cabíveis, as quais incluem, mas não se limitam a: (i) protesto público do título perante o Cartório de Registro de Títulos e Documentos da Comarca de Itapema/SC; (ii) inclusão restritiva de seu nome junto aos órgãos de proteção ao crédito (SPC/SERASA); e (iii) propositura de Ação Judicial de Execução ou Cobrança cabível, respondendo o devedor por perdas, danos, juros moratórios, correção monetária e honorários advocatícios sucumbenciais, ex vi do artigo 389 do Código Civil Brasileiro.`;
       
       const textLines = doc.splitTextToSize(textoCorpo, 170);
       doc.text(textLines, 20, 92);
@@ -375,7 +424,17 @@ export default function DetalheNegociacao() {
                 {devedor?.notificacao_amigavel ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">01</span>}
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.notificacao_amigavel ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
+            {/* Bloco condicionalmente configurado com "relative" para ancoragem correta do overlay tático */}
+            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 relative ${sendingMessage ? 'opacity-40 pointer-events-none' : ''} ${devedor?.notificacao_amigavel ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
+              
+              {/* Overlay de Bloqueio de Ação e Feedback Visual Dinâmico */}
+              {sendingMessage && (
+                <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-[32px] flex flex-col items-center justify-center gap-3 z-30 pointer-events-auto">
+                  <Hourglass className="animate-spin text-blue-600" size={32} />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 animate-pulse">enviando mensagem...</span>
+                </div>
+              )}
+
               <div className="flex justify-between items-start mb-6">
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Abordagem Consultiva</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+75</span>
@@ -398,7 +457,7 @@ export default function DetalheNegociacao() {
             </div>
           </div>
 
-          {/* 02. HIGIENIZAÇÃO DE CONTATO (NOVA CAMADA DE DADOS DESATUALIZADOS) */}
+          {/* 02. HIGIENIZAÇÃO DE CONTATO */}
           <div className="flex gap-12 group">
             <div className="flex flex-col items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white shadow-amber-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
@@ -420,7 +479,7 @@ export default function DetalheNegociacao() {
                     type="text" 
                     placeholder="Ex: 47999999999" 
                     value={celularEditavel} 
-                    onChange={(e) => setCelularEditavel(e.target.value)} 
+                    onChange={(e) => setCellularEditavel(e.target.value)} 
                     className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none text-xs focus:ring-2 focus:ring-blue-100" 
                   />
                 </div>
@@ -689,7 +748,7 @@ export default function DetalheNegociacao() {
                   <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
                   <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 5: Qualificação do Endereço de Notificação</h5>
                   <p className="text-xs leading-relaxed text-slate-500 text-left">
-                    O endereço do devedor deve estar rigorosamente atualizado. O cartório realiza a notificação de forma pessoal. Endereços genéricos ou desatualizados causarão a devolução do título com a certidão de "não localizado". Caso o devedor mude de endereço furtivamente, o tabelião efetuará o protesto por Edital de Imprensa Oficial.
+                    O endereço do devedor deve estar rigorosamente updated. O cartório realiza a notificação de forma pessoal. Endereços genéricos ou desatualizados causarão a devolução do título com a certidão de "não localizado". Caso o devedor mude de endereço furtivamente, o tabelião efetuará o protesto por Edital de Imprensa Oficial.
                   </p>
                 </div>
                 <div>
@@ -761,7 +820,7 @@ export default function DetalheNegociacao() {
                   <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
                   <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 2: Inclusão via Sistema Credenciado (CDL / Serasa)</h5>
                   <p className="text-xs leading-relaxed text-slate-500 text-left">
-                    Acesse o painel restritivo utilizando o CNPJ credenciado da clínica. Informe com exatidão o CPF do paciente, número do contrato original de prestação de serviços odontológicos, e a data exata em que ocorreu o primeiro inadimplemento (vencimento da primeira parcela em atraso: {devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : ''}).
+                    Acesse o painel restritivo utilizando o CNPJ credenciado da clínica. Informações com exatidão o CPF do paciente, número do contrato original de prestação de serviços odontológicos, e a data exata em que ocorreu o primeiro inadimplemento (vencimento da primeira parcela em atraso: {devedor?.data_divida ? new Date(devedor.data_divida).toLocaleDateString('pt-BR') : ''}).
                   </p>
                 </div>
                 <div>
@@ -789,7 +848,7 @@ export default function DetalheNegociacao() {
                   <div className="absolute left-[-5px] w-2.5 h-2.5 rounded-full bg-slate-400"></div>
                   <h5 className="font-black text-xs text-slate-900 uppercase tracking-wider mb-1 text-left">Passo 6: Prazo de Baixa Obrigatória Pós-Quitação (Súmula 548 / STJ)</h5>
                   <p className="text-xs leading-relaxed text-slate-500 text-left">
-                    Fique atento: a partir do momento em que o assunto for liquidado ou houver o pagamento da primeira parcela do novo acordo firmado, a AC Odontologia tem o prazo improrrogável de **5 (cinco) dias úteis** para efetuar a baixa da negativação no sistema. O descumprimento desse prazo gera dano moral presumido (*in re ipsa*) conforme jurisprudência unificada dos tribunais.
+                    A partir do momento em que o assunto for liquidado ou houver o pagamento da primeira parcela do novo acordo firmado, a AC Odontologia tem o prazo improrrogável de **5 (cinco) dias úteis** para efetuar a baixa da negativação no sistema. O descumprimento desse prazo gera dano moral presumido (*in re ipsa*) conforme jurisprudência unificada dos tribunais.
                   </p>
                 </div>
               </div>

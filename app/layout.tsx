@@ -1,7 +1,7 @@
 // app/layout.tsx
 import './globals.css';
 import Link from 'next/link';
-import { LayoutDashboard, Receipt, Send, FileText, History, Menu, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Receipt, Send, FileText, History, Menu, ChevronDown, Wrench } from 'lucide-react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <ChevronDown size={14} className="text-slate-400 group-hover:rotate-180 transition-transform" />
               </button>
 
-              {/* Lista Dropdown */}
+              {/* Lista Dropdown Expandida */}
               <div className="absolute top-full right-0 w-72 bg-white border border-slate-100 rounded-3xl shadow-2xl py-4 invisible opacity-0 translate-y-2 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all z-[60]">
                 <Link href="/recebiveis" className="flex items-center gap-4 px-6 py-4 text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 transition-colors">
                   <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Receipt size={18} /></div>
@@ -41,6 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/negociacoes" className="flex items-center gap-4 px-6 py-4 text-sm font-bold text-slate-600 hover:text-amber-600 hover:bg-amber-50/50 transition-colors">
                   <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><History size={18} /></div>
                   Negociação de Dívidas
+                </Link>
+
+                {/* Link Tático do Módulo CMMS Integrado */}
+                <Link href="/cmms" className="flex items-center gap-4 px-6 py-4 text-sm font-bold text-slate-600 hover:text-orange-600 hover:bg-orange-50/50 transition-colors">
+                  <div className="p-2 bg-orange-50 text-orange-600 rounded-xl"><Wrench size={18} /></div>
+                  CMMS
                 </Link>
               </div>
             </div>

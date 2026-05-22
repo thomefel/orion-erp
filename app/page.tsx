@@ -1,6 +1,6 @@
 // app/page.tsx
 import Link from 'next/link';
-import { Receipt, Send, ArrowRight, FileText, History, ShieldCheck, TrendingUp, Zap } from 'lucide-react';
+import { Receipt, Send, ArrowRight, FileText, History, ShieldCheck, TrendingUp, Zap, Wrench } from 'lucide-react';
 
 export default function HomePage() {
   return (
@@ -75,6 +75,22 @@ export default function HomePage() {
           </div>
           <div className="p-12 bg-white rounded-[48px] group-hover:bg-violet-600 group-hover:text-white transition-all duration-500 shadow-2xl shadow-violet-100">
             <FileText size={64} />
+          </div>
+        </div>
+      </Link>
+
+      {/* Seção 5: CMMS (Nova Seção Injetada com Alinhamento Estrito) */}
+      <Link href="/cmms" className="group block w-full bg-white border-b border-slate-100 hover:bg-orange-50/30 transition-all duration-500">
+        <div className="max-w-7xl mx-auto px-6 h-[45vh] flex items-center justify-between text-left">
+          <div className="max-w-xl text-left">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic group-hover:text-orange-600 transition-colors">CMMS</h2>
+            <p className="text-lg font-bold text-slate-400 mt-4 uppercase tracking-tight text-left">Gestão de Ativos</p>
+            <p className="text-slate-500 mt-6 leading-relaxed text-left">
+              Controle a manutenção preventiva de todos os equipamentos do consultório, bem como o estoque de insumos não odontológicos.
+            </p>
+          </div>
+          <div className="p-12 bg-slate-50 rounded-[48px] group-hover:bg-orange-600 group-hover:text-white transition-all duration-500 group-hover:scale-105 shadow-2xl shadow-orange-100">
+            <Wrench size={64} />
           </div>
         </div>
       </Link>
