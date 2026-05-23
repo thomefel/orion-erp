@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         nome,
         proxima_execucao,
         cmms_equipamentos ( nome, localizacao ),
-        cmms_passos_manutencao ( ordem_passo, descricao )
+        cmms_passos_manutencao ( id, ordem_passo, descricao )
       `)
       .eq('proxima_execucao', tomorrowString);
 
@@ -54,9 +54,14 @@ export async function GET(request: Request) {
     // 5. Processamento e Formatação das Mensagens em Lote
     let totalEnviados = 0;
 
-    for (const tarefa of tarefas) {
-      const eqNome = tarefa.cmms_equipamentos?.nome || 'ATIVO DESCONHECIDO';
-      const eqLocal = tarefa.cmms_equipamentos?.localizacao || 'GERAL';
+    for (const tarefa of (tarefas as any[])) {
+      // Técnica de extração segura: valida se o retorno técnico foi empacotado como Array ou Objeto Puro
+      const eqData = Array.isArray(tarefa.cmms_equipamentos) 
+        ? tarefa.cmms_equipamentos[0] 
+        : tarefa.cmms_equipamentos;
+
+      const eqNome = eqData?.nome || 'ATIVO DESCONHECIDO';
+      const eqLocal = eqData?.localizacao || 'GERAL';
       const passos = tarefa.cmms_passos_manutencao || [];
 
       // Montagem do payload textual seguindo o padrão institucional rigoroso Orion
