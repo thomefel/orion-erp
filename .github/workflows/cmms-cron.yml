@@ -1,0 +1,17 @@
+name: Orion CMMS - Alertas Diários de Manutenção
+
+on:
+  schedule:
+    # Executa impreterivelmente todos os dias às 00:00 UTC (21:00h Horário de Brasília)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Permite que você execute o teste manualmente pelo painel do GitHub
+
+jobs:
+  trigger-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar Requisição do Motor Preditivo Orion CMMS
+        run: |
+          curl -X GET "https://acobranca.netlify.app/api/cron/cmms-alerts" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+          -H "Content-Type: application/json"
