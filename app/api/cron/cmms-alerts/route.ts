@@ -3,7 +3,6 @@ import { supabase } from '@/app/lib/supabase';
 
 export async function GET(request: Request) {
   // 1. Barreira de Segurança: Validação do token de autenticação via Header
-  const { searchParams } = new URL(request.url);
   const authHeader = request.headers.get('authorization');
   const secret = process.env.CRON_SECRET;
 
@@ -12,18 +11,25 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 2. Cálculo Determinístico do Dia Seguinte (Forçando Fuso Horário de Brasília)
+    // 2. Cálculo Determinístico de Prazos (Forçando Fuso Horário de Brasília)
     const spTime = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
     const dataSP = new Date(spTime);
+
+    // Formatação de Hoje
+    const yyyyH = dataSP.getFullYear();
+    const mmH = String(dataSP.getMonth() + 1).padStart(2, '0');
+    const ddH = String(dataSP.getDate()).padStart(2, '0');
+    const todayString = `${yyyyH}-${mmH}-${ddH}`;
+
+    // Formatação de Amanhã
     const diaSeguinte = new Date(dataSP);
     diaSeguinte.setDate(dataSP.getDate() + 1);
+    const yyyyA = diaSeguinte.getFullYear();
+    const mmA = String(diaSeguinte.getMonth() + 1).padStart(2, '0');
+    const ddA = String(diaSeguinte.getDate()).padStart(2, '0');
+    const tomorrowString = `${yyyyA}-${mmA}-${ddA}`;
 
-    const yyyy = diaSeguinte.getFullYear();
-    const mm = String(diaSeguinte.getMonth() + 1).padStart(2, '0');
-    const dd = String(diaSeguinte.getDate()).padStart(2, '0');
-    const tomorrowString = `${yyyy}-${mm}-${dd}`;
-
-    // 3. Consulta Relacional de Rotinas Agendadas para Amanhã
+    // 3. Consulta Relacional: Gatilhos de Amanhã OU Prazos Menores/Iguais a Hoje (Atrasados)
     const { data: tarefas, error: queryErr } = await supabase
       .from('cmms_manutencoes_periodicas')
       .select(`
@@ -33,12 +39,12 @@ export async function GET(request: Request) {
         cmms_equipamentos ( nome, localizacao ),
         cmms_passos_manutencao ( id, ordem_passo, descricao )
       `)
-      .eq('proxima_execucao', tomorrowString);
+      .or(`proxima_execucao.eq.${tomorrowString},proxima_execucao.lte.${todayString}`);
 
     if (queryErr) throw queryErr;
 
     if (!tarefas || tarefas.length === 0) {
-      return NextResponse.json({ message: `Monitor CMMS: Nenhuma rotina agendada para ${tomorrowString}.` });
+      return NextResponse.json({ message: `Monitor CMMS: Nenhuma rotina agendada ou em atraso para monitoramento.` });
     }
 
     // 4. Parâmetros de Conexão da Evolution API e Destinatário
@@ -51,11 +57,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Parâmetros de mensageria ausentes no ambiente.' }, { status: 500 });
     }
 
-    // 5. Processamento e Formatação das Mensagens em Lote
+    // 5. Processamento e Formatação das Mensagens com Hierarquia de Status
     let totalEnviados = 0;
 
     for (const tarefa of (tarefas as any[])) {
-      // Técnica de extração segura: valida se o retorno técnico foi empacotado como Array ou Objeto Puro
       const eqData = Array.isArray(tarefa.cmms_equipamentos) 
         ? tarefa.cmms_equipamentos[0] 
         : tarefa.cmms_equipamentos;
@@ -64,11 +69,31 @@ export async function GET(request: Request) {
       const eqLocal = eqData?.localizacao || 'GERAL';
       const passos = tarefa.cmms_passos_manutencao || [];
 
-      // Montagem do payload textual seguindo o padrão institucional rigoroso Orion
-      let textMessage = `⚠️ *ORION CMMS • CRONOGRAMA DE PREVENTIVAS* ⚠️\n\n`;
-      textMessage += `*ATIVO:* ${eqNome.toUpperCase()}\n`;
-      textMessage += `*SETOR/LOCAL:* ${eqLocal.toUpperCase()}\n`;
-      textMessage += `*MANUTENÇÃO PROGRAMADA PARA AMANHÃ:* ${tarefa.nome.toUpperCase()}\n\n`;
+      const isAtrasada = tarefa.proxima_execucao <= todayString;
+      
+      let textMessage = '';
+
+      if (isAtrasada) {
+        // Cálculo de dias de atraso baseado em timestamps puros de data
+        const dataProx = new Date(tarefa.proxima_execucao);
+        const dataHojePura = new Date(todayString);
+        const diffTime = dataHojePura.getTime() - dataProx.getTime();
+        const diasAtraso = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+        // Layout de cobrança ostensiva para tarefas não executadas
+        textMessage = `🚨 *ORION CMMS • ALERTA DE MANUTENÇÃO EM ATRASO* 🚨\n\n`;
+        textMessage += `*ATIVO:* ${eqNome.toUpperCase()}\n`;
+        textMessage += `*SETOR/LOCAL:* ${eqLocal.toUpperCase()}\n`;
+        textMessage += `*STATUS CRÍTICO:* COBRANÇA DE EXECUÇÃO EM ATRASO HÁ ${diasAtraso} DIAS\n`;
+        textMessage += `*PROCEDIMENTO VENCIDOD:* ${tarefa.nome.toUpperCase()}\n`;
+        textMessage += `*PRAZO EXPIRADO EM:* ${tarefa.proxima_execucao.split('-').reverse().join('/')}\n\n`;
+      } else {
+        // Layout preventivo padrão para o dia seguinte
+        textMessage = `⚠️ *ORION CMMS • CRONOGRAMA DE PREVENTIVAS* ⚠️\n\n`;
+        textMessage += `*ATIVO:* ${eqNome.toUpperCase()}\n`;
+        textMessage += `*SETOR/LOCAL:* ${eqLocal.toUpperCase()}\n`;
+        textMessage += `*MANUTENÇÃO PROGRAMADA PARA AMANHÃ:* ${tarefa.nome.toUpperCase()}\n\n`;
+      }
 
       if (passos.length > 0) {
         textMessage += `*PROCEDIMENTO OPERACIONAL PADRÃO (POP):*\n`;
@@ -81,7 +106,7 @@ export async function GET(request: Request) {
 
       textMessage += `\n_Módulo Orion CMMS • Rigor Formal e Compliance Operacional_`;
 
-      // Disparo HTTP síncrono para o barramento da Evolution API
+      // Disparo HTTP para o barramento da Evolution API
       const response = await fetch(`${evoUrl}/message/sendText/${evoInstance}`, {
         method: 'POST',
         headers: {
@@ -105,7 +130,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ 
       success: true, 
-      dateTarget: tomorrowString, 
+      dateChecked: todayString, 
       processedAlerts: totalEnviados 
     });
 
