@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     const ddA = String(diaSeguinte.getDate()).padStart(2, '0');
     const tomorrowString = `${yyyyA}-${mmA}-${ddA}`;
 
-    // 3. Consulta Relacional: Gatilhos de Amanhã OU Prazos Menores/Iguais a Hoje (Atrasados)
+    // 3. Consulta Relacional Otimizada: Tudo que está pendente até amanhã (Atrasados + Próximo Dia)
     const { data: tarefas, error: queryErr } = await supabase
       .from('cmms_manutencoes_periodicas')
       .select(`
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
         cmms_equipamentos ( nome, localizacao ),
         cmms_passos_manutencao ( id, ordem_passo, descricao )
       `)
-      .or(`proxima_execucao.eq.${tomorrowString},proxima_execucao.lte.${todayString}`);
+      .lte('proxima_execucao', tomorrowString);
 
     if (queryErr) throw queryErr;
 
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Parâmetros de mensageria ausentes no ambiente.' }, { status: 500 });
     }
 
-    // 5. Mapeamento e Preparação das Mensagens Paralelizadas (Técnica Promise.all)
+    // 5. Mapeamento e Preparação das Mensagens Paralelizadas (Formato Homologado Orion)
     const promessasDeDisparo = (tarefas as any[]).map(async (tarefa) => {
       const eqData = Array.isArray(tarefa.cmms_equipamentos) 
         ? tarefa.cmms_equipamentos[0] 
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
 
       textMessage += `\n_Módulo Orion CMMS • Rigor Formal e Compliance Operacional_`;
 
-      // Retorna a promessa do fetch sem dar await dentro do loop
+      // Estrutura de Payload limpa de primeiro nível - Idêntica ao modulo de envios institucional
       return fetch(`${evoUrl}/message/sendText/${evoInstance}`, {
         method: 'POST',
         headers: {
@@ -109,18 +109,13 @@ export async function GET(request: Request) {
         },
         body: JSON.stringify({
           number: targetNumber,
-          options: {
-            delay: 1200,
-            presence: 'composing'
-          },
-          textMessage: {
-            text: textMessage
-          }
+          text: textMessage,
+          delay: 1200
         })
       });
     });
 
-    // Resolve todos os disparos simultaneamente, mitigando timeouts na Netlify
+    // Execução simultânea das requisições
     const resultados = await Promise.all(promessasDeDisparo);
     const totalEnviados = resultados.filter(res => res.ok).length;
 
