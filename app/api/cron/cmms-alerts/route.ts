@@ -57,10 +57,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Parâmetros de mensageria ausentes no ambiente.' }, { status: 500 });
     }
 
-    // 5. Processamento e Formatação das Mensagens com Hierarquia de Status
-    let totalEnviados = 0;
-
-    for (const tarefa of (tarefas as any[])) {
+    // 5. Mapeamento e Preparação das Mensagens Paralelizadas (Técnica Promise.all)
+    const promessasDeDisparo = (tarefas as any[]).map(async (tarefa) => {
       const eqData = Array.isArray(tarefa.cmms_equipamentos) 
         ? tarefa.cmms_equipamentos[0] 
         : tarefa.cmms_equipamentos;
@@ -68,27 +66,23 @@ export async function GET(request: Request) {
       const eqNome = eqData?.nome || 'ATIVO DESCONHECIDO';
       const eqLocal = eqData?.localizacao || 'GERAL';
       const passos = tarefa.cmms_passos_manutencao || [];
-
       const isAtrasada = tarefa.proxima_execucao <= todayString;
       
       let textMessage = '';
 
       if (isAtrasada) {
-        // Cálculo de dias de atraso baseado em timestamps puros de data
         const dataProx = new Date(tarefa.proxima_execucao);
         const dataHojePura = new Date(todayString);
         const diffTime = dataHojePura.getTime() - dataProx.getTime();
         const diasAtraso = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-        // Layout de cobrança ostensiva para tarefas não executadas
         textMessage = `🚨 *ORION CMMS • ALERTA DE MANUTENÇÃO EM ATRASO* 🚨\n\n`;
         textMessage += `*ATIVO:* ${eqNome.toUpperCase()}\n`;
         textMessage += `*SETOR/LOCAL:* ${eqLocal.toUpperCase()}\n`;
         textMessage += `*STATUS CRÍTICO:* COBRANÇA DE EXECUÇÃO EM ATRASO HÁ ${diasAtraso} DIAS\n`;
-        textMessage += `*PROCEDIMENTO VENCIDOD:* ${tarefa.nome.toUpperCase()}\n`;
+        textMessage += `*PROCEDIMENTO VENCIDO:* ${tarefa.nome.toUpperCase()}\n`;
         textMessage += `*PRAZO EXPIRADO EM:* ${tarefa.proxima_execucao.split('-').reverse().join('/')}\n\n`;
       } else {
-        // Layout preventivo padrão para o dia seguinte
         textMessage = `⚠️ *ORION CMMS • CRONOGRAMA DE PREVENTIVAS* ⚠️\n\n`;
         textMessage += `*ATIVO:* ${eqNome.toUpperCase()}\n`;
         textMessage += `*SETOR/LOCAL:* ${eqLocal.toUpperCase()}\n`;
@@ -106,8 +100,8 @@ export async function GET(request: Request) {
 
       textMessage += `\n_Módulo Orion CMMS • Rigor Formal e Compliance Operacional_`;
 
-      // Disparo HTTP para o barramento da Evolution API
-      const response = await fetch(`${evoUrl}/message/sendText/${evoInstance}`, {
+      // Retorna a promessa do fetch sem dar await dentro do loop
+      return fetch(`${evoUrl}/message/sendText/${evoInstance}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,9 +118,11 @@ export async function GET(request: Request) {
           }
         })
       });
+    });
 
-      if (response.ok) totalEnviados++;
-    }
+    // Resolve todos os disparos simultaneamente, mitigando timeouts na Netlify
+    const resultados = await Promise.all(promessasDeDisparo);
+    const totalEnviados = resultados.filter(res => res.ok).length;
 
     return NextResponse.json({ 
       success: true, 
