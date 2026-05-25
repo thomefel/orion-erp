@@ -28,8 +28,10 @@ export default function CmmsPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isEquipamentoFormExpanded, setIsEquipamentoFormExpanded] = useState(true);
   const [isInsumoFormExpanded, setIsInsumoFormExpanded] = useState(true);
-  const [selectedEquipamento, setSelectedEquipamento] = useState<any>(null); // Controle do Modal
+  const [selectedEquipamento, setSelectedEquipamento] = useState<any>(null); // Controle do Modal de Prontuário
   const [editingManutencao, setEditingManutencao] = useState<any>(null); // Controle de Edição de Rotina
+  const [viewChecklistTarefa, setViewChecklistTarefa] = useState<any>(null); // Controle do Modal de Checklist Expandido
+  const [localCheckedPassos, setLocalCheckedPassos] = useState<Record<string, boolean>>({}); // Estado Visual do Checklist
 
   // Formulário: Cadastro de Equipamento (Isolado)
   const [eqNome, setEqNome] = useState('');
@@ -129,7 +131,7 @@ export default function CmmsPage() {
     }
   };
 
-  // OPERAÇÃO EXTRA: Baixa de Manutenção concluída (Atualiza data_ultima_execucao para Hoje)
+  // Alteração da data da última manutenção para a data de hoje (Conclusão)
   const handleCompleteManutencao = async (id: string) => {
     setIsProcessing(true);
     try {
@@ -392,6 +394,7 @@ export default function CmmsPage() {
         )}
       </section>
 
+      {/* SEÇÃO 2: INVENTÁRIO DE ATIVOS EQUIPAMENTOS (LARGURA COMPLETA) */}
       <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left w-full">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">
           <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
@@ -441,6 +444,7 @@ export default function CmmsPage() {
         )}
       </section>
 
+      {/* SEÇÃO 3: CRONOGRAMA DE MANUTENÇÃO (LARGURA COMPLETA + COR ACENTO + MODAL ITERATIVO) */}
       <section className="bg-blue-50/10 rounded-[32px] shadow-md border-2 border-blue-500/30 overflow-hidden mb-10 text-left w-full">
         <div className="p-6 bg-blue-50/40 border-b border-blue-100 flex items-center gap-2">
           <Calendar size={14} className="text-blue-600" />
@@ -474,11 +478,28 @@ export default function CmmsPage() {
                         <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">{m.cmms_equipamentos?.localizacao}</div>
                       </td>
                       <td className="p-6">
-                        <div className="font-bold text-slate-700 text-xs flex items-center gap-1.5 uppercase">{m.nome}</div>
+                        <div 
+                          onClick={() => {
+                            setViewChecklistTarefa(m);
+                            setLocalCheckedPassos({});
+                          }}
+                          className="font-bold text-slate-700 text-xs flex items-center gap-1.5 uppercase cursor-pointer hover:text-blue-600 transition-colors select-none"
+                          title="Abrir folha de checklist interativa"
+                        >
+                          {m.nome}
+                        </div>
                         {m.cmms_passos_manutencao && m.cmms_passos_manutencao.length > 0 && (
                           <div className="mt-1 flex gap-1">
                             {m.cmms_passos_manutencao.map((p: any) => (
-                              <span key={p.id} className="bg-white border border-blue-200/60 rounded px-1 text-[9px] font-mono text-blue-600" title={p.descricao}>
+                              <span 
+                                key={p.id} 
+                                onClick={() => {
+                                  setViewChecklistTarefa(m);
+                                  setLocalCheckedPassos({});
+                                }}
+                                className="bg-white border border-blue-200/60 rounded px-1 text-[9px] font-mono text-blue-600 cursor-pointer hover:bg-blue-50 select-none"
+                                title={p.descricao}
+                              >
                                 ST-{p.ordem_passo}
                               </span>
                             ))}
@@ -513,7 +534,7 @@ export default function CmmsPage() {
         )}
       </section>
 
-
+      {/* SEÇÃO 4: CADASTRO DE INSUMOS (LARGURA COMPLETA) */}
       <section className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden mb-10 text-left w-full">
         <div 
           onClick={() => setIsInsumoFormExpanded(!isInsumoFormExpanded)}
@@ -536,7 +557,7 @@ export default function CmmsPage() {
                 <input type="text" value={insNome} onChange={e => setInsNome(e.target.value)} placeholder="Ex: Pilha AA Fotopolimerizador" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 outline-none" required />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Inicial</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Atual</label>
                 <input type="number" value={insQtdAtual} onChange={e => setInsQtdAtual(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" />
               </div>
               <div>
@@ -558,6 +579,7 @@ export default function CmmsPage() {
         )}
       </section>
 
+      {/* SEÇÃO 5: ALMOXARIFADO DE INSUMOS (LARGURA COMPLETA) */}
       <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left w-full">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">
           <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
@@ -781,6 +803,83 @@ export default function CmmsPage() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* --- POPUP MODAL PANORÂMICO: CHECKLIST DE TRABALHO ITERATIVO (TELA CHEIA) --- */}
+      {viewChecklistTarefa && (
+        <div className="fixed inset-0 bg-white z-50 flex flex-col p-12 overflow-y-auto animate-in fade-in duration-200 text-left">
+          
+          {/* Cabeçalho de Alta Densidade do Painel de Suporte */}
+          <div className="flex justify-between items-start border-b border-slate-100 pb-6 mb-8 text-left">
+            <div className="text-left">
+              <span className="block text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-2 text-left">
+                Suporte Operacional Ativo • POP
+              </span>
+              <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase italic flex items-center gap-2 text-left">
+                <CheckSquare size={28} className="text-blue-600" /> Checklist de Execução Técnica
+              </h2>
+              <p className="text-xs text-slate-500 font-bold uppercase mt-2 text-left">
+                {viewChecklistTarefa.cmms_equipamentos?.nome} • {viewChecklistTarefa.cmms_equipamentos?.localizacao || 'GERAL'} — ROTINA: {viewChecklistTarefa.nome}
+              </p>
+            </div>
+            <button 
+              onClick={() => { setViewChecklistTarefa(null); setLocalCheckedPassos({}); }} 
+              className="p-3 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-sm active:scale-95 text-center"
+            >
+              <XCircle size={16} /> Fechar Checklist
+            </button>
+          </div>
+
+          {/* Quadro de Trabalho Centralizado do Checklist */}
+          <div className="flex-1 max-w-4xl w-full mx-auto py-6 text-left">
+            {(!viewChecklistTarefa.cmms_passos_manutencao || viewChecklistTarefa.cmms_passos_manutencao.length === 0) ? (
+              <div className="py-20 text-center bg-slate-50 rounded-[24px] border border-slate-100 text-slate-400 font-bold text-red-600 uppercase tracking-wider text-center">
+                Nenhuma etapa ou passo técnico cadastrado para esta rotina de manutenção.
+              </div>
+            ) : (
+              <div className="space-y-4 text-left">
+                {viewChecklistTarefa.cmms_passos_manutencao
+                  .sort((a: any, b: any) => a.ordem_passo - b.ordem_passo)
+                  .map((p: any) => {
+                    const isChecked = !!localCheckedPassos[p.id];
+                    return (
+                      <div 
+                        key={p.id}
+                        onClick={() => setLocalCheckedPassos(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        className={`p-6 rounded-[24px] border transition-all flex items-center justify-between cursor-pointer select-none text-left ${
+                          isChecked 
+                            ? 'bg-slate-50 border-slate-200 opacity-60 text-slate-400' 
+                            : 'bg-white border-slate-100 shadow-sm hover:border-blue-300 hover:bg-slate-50/30 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4 pr-4 text-left">
+                          <span className={`font-mono font-black text-xs px-2 py-1 rounded-lg text-center ${isChecked ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 text-blue-600'}`}>
+                            {String(p.ordem_passo).padStart(2, '0')}
+                          </span>
+                          <p className={`text-sm font-medium uppercase tracking-wide text-left ${isChecked ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                            {p.descricao}
+                          </p>
+                        </div>
+                        <div className={`p-1 rounded-lg border transition-colors flex items-center justify-center ${isChecked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 text-transparent'}`}>
+                          <CheckSquare size={18} className={isChecked ? 'opacity-100' : 'opacity-0'} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+
+          {/* Rodapé Dinâmico de Progresso Tático */}
+          <div className="border-t border-slate-100 pt-6 mt-8 max-w-4xl w-full mx-auto flex justify-between items-center text-slate-400 text-left">
+            <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 text-left">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Painel de Suporte Clínico Ativo
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-right">
+              Progresso: {Object.values(localCheckedPassos).filter(Boolean).length} de {viewChecklistTarefa.cmms_passos_manutencao?.length || 0} Etapas Concluídas
+            </span>
           </div>
         </div>
       )}
