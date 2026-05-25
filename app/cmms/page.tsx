@@ -86,7 +86,7 @@ export default function CmmsPage() {
         
         setManutencoesGlobais(formatadas);
         
-        // Sincronização del estado interno do modal ativo
+        // Sincronização do estado interno do modal ativo
         if (selectedEquipamento) {
           const atualizado = eqData?.find(e => e.id === selectedEquipamento.id);
           if (atualizado) setSelectedEquipamento(atualizado);
@@ -126,6 +126,33 @@ export default function CmmsPage() {
       setPassosInput(m.cmms_passos_manutencao.map((p: any) => p.descricao));
     } else {
       setPassosInput(['']);
+    }
+  };
+
+  // OPERAÇÃO EXTRA: Baixa de Manutenção concluída (Atualiza data_ultima_execucao para Hoje)
+  const handleCompleteManutencao = async (id: string) => {
+    setIsProcessing(true);
+    try {
+      const spTime = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+      const dataSP = new Date(spTime);
+      const yyyy = dataSP.getFullYear();
+      const mm = String(dataSP.getMonth() + 1).padStart(2, '0');
+      const dd = String(dataSP.getDate()).padStart(2, '0');
+      const todayString = `${yyyy}-${mm}-${dd}`;
+
+      const { error } = await supabase
+        .from('cmms_manutencoes_periodicas')
+        .update({ data_ultima_execucao: todayString })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      await fetchInitialData();
+    } catch (err: any) {
+      console.error('Erro ao concluir manutenção:', err);
+      alert(`Falha na atualização da rotina: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -188,7 +215,7 @@ export default function CmmsPage() {
       } else {
         // MODO INSERÇÃO
         const { data: newMan, error: manErr } = await supabase
-          .from('cmms_manutencoes_periodicas}').insert([{
+          .from('cmms_manutencoes_periodicas').insert([{
             equipamento_id: selectedEquipamento.id,
             nome: mNome.trim(),
             frequencia_dias: parseInt(mFreq) || 180,
@@ -255,7 +282,7 @@ export default function CmmsPage() {
       
       if (error) throw error;
       
-      setInsumos(prev => prev.map(item => item.id === id ? { ...item, House: item, quantidade_atual: novaQtd } : item));
+      setInsumos(prev => prev.map(item => item.id === id ? { ...item, quantidade_atual: novaQtd } : item));
     } catch (err) {
       console.error('Erro ao atualizar quantidade do insumo:', err);
     }
@@ -365,11 +392,10 @@ export default function CmmsPage() {
         )}
       </section>
 
-
       <section className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden mb-10 text-left w-full">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">
           <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            Inventário de Equipamentos
+            Inventário de Ativos Equipamentos
           </span>
         </div>
 
@@ -434,6 +460,7 @@ export default function CmmsPage() {
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider">Rotina Preventiva</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Próxima Execução</th>
                   <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Status</th>
+                  <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Conclusão</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-blue-100/50">
@@ -463,8 +490,19 @@ export default function CmmsPage() {
                         <span className={`inline-block px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${
                           isVencido ? 'bg-red-50 text-red-700 border-red-200 animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         }`}>
-                          {isVencido ? `Atrasada há ${Math.abs(m.diasRestantes)} dias` : `Em dia (${m.diasRestantes} dias)`}
+                          {isVencido ? `Atrasada há ${Math.abs(m.diasRestantes)} dias` : `Em dia (${m.diasRestantes} dias rest.)`}
                         </span>
+                      </td>
+                      <td className="p-6 text-center">
+                        <button 
+                          type="button"
+                          onClick={() => handleCompleteManutencao(m.id)}
+                          disabled={isProcessing}
+                          className="inline-flex items-center justify-center p-2.5 bg-white border border-slate-200 rounded-xl text-emerald-600 hover:text-white hover:bg-emerald-600 hover:border-emerald-600 transition-all shadow-sm active:scale-95 cursor-pointer disabled:opacity-50"
+                          title="Marcar como concluída hoje"
+                        >
+                          <CheckSquare size={14} />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -475,6 +513,7 @@ export default function CmmsPage() {
         )}
       </section>
 
+
       <section className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden mb-10 text-left w-full">
         <div 
           onClick={() => setIsInsumoFormExpanded(!isInsumoFormExpanded)}
@@ -483,7 +522,7 @@ export default function CmmsPage() {
           <div className="flex items-center gap-3">
              {isInsumoFormExpanded ? <ChevronUp className="text-blue-600" size={20} /> : <ChevronDown className="text-blue-600" size={20} />}
              <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">
-               Cadastrar Novo Insumo
+                Cadastrar Novo Insumo
              </span>
           </div>
           <Box size={16} className="text-slate-300" />
