@@ -64,7 +64,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing Gemini API Key on server environment' }, { status: 500 });
     }
 
-    // 4. Conexão com o Supabase (Configuração) com blindagem anti-duplicidade (.order e .limit adicionados)
     console.log(`[ORION TELEMETRIA] [${requestId}] Consultando tabela ia_config no Supabase...`);
     const { data: config, error: configError } = await supabase
       .from('ia_config')
@@ -110,8 +109,9 @@ export async function POST(req: Request) {
     let historico = logConversa ? logConversa.historico_mensagens : [];
     historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando histórico para o processamento do Gemini 1.5 Flash...`);
-    const urlGemini = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // --- ATUALIZAÇÃO DA ROTA: MUDANÇA DO GATEWAY DE v1beta PARA v1 ESTÁVEL ---
+    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando histórico para o gateway de produção v1 do Gemini 1.5 Flash...`);
+    const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const startTimeGemini = Date.now();
     const responseGemini = await fetch(urlGemini, {
