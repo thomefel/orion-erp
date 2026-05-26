@@ -48,6 +48,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <div className="p-2 bg-orange-50 text-orange-600 rounded-xl"><Wrench size={18} /></div>
                   CMMS
                 </Link>
+
+                <Link href="/supervisor" className="flex items-center gap-4 px-6 py-4 text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 transition-colors">
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><LayoutDashboard size={18} /></div>
+                  Supervisor IA
+                </Link>
               </div>
             </div>
           </div>
