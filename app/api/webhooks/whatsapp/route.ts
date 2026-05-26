@@ -21,7 +21,6 @@ function isOutsideBusinessHours(inicio: string, fim: string): boolean {
   const minutosFim = hFim * 60 + mFim;
 
   if (minutosInicio > minutosFim) {
-    // CORRIGIDO: Alterado de minutesFim para minutosFim para sanar o erro de build
     return minutosAgora >= minutosInicio || minutosAgora <= minutosFim;
   }
   return minutosAgora >= minutosInicio && minutosAgora <= minutosFim;
@@ -65,10 +64,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing Gemini API Key on server environment' }, { status: 500 });
     }
 
+    // 4. Conexão com o Supabase (Configuração) com blindagem anti-duplicidade (.order e .limit adicionados)
     console.log(`[ORION TELEMETRIA] [${requestId}] Consultando tabela ia_config no Supabase...`);
     const { data: config, error: configError } = await supabase
       .from('ia_config')
       .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (configError) {
