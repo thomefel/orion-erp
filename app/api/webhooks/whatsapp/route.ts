@@ -59,6 +59,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'no_text_content' });
     }
 
+    if (!GEMINI_API_KEY) {
+      console.error(`[ORION TELEMETRIA] [${requestId}] ❌ ERRO CRÍTICO: Variável GEMINI_API_KEY não foi localizada no ambiente do servidor.`);
+      return NextResponse.json({ error: 'Missing Gemini API Key on server environment' }, { status: 500 });
+    }
+
     console.log(`[ORION TELEMETRIA] [${requestId}] Consultando tabela ia_config no Supabase...`);
     const { data: config, error: configError } = await supabase
       .from('ia_config')
@@ -101,31 +106,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'human_intervention_active' });
     }
 
-    // --- ARQUITETURA DE INJEÇÃO CONTEXTUAL EXTRA-SEGURA ---
     let historico = logConversa ? logConversa.historico_mensagens : [];
+    historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    if (historico.length === 0) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] 🧠 Primeira interação detectada. Injetando Playbook Clínico diretamente no supercontexto inicial do usuário.`);
-      
-      // Fusão estruturada de Prompt de Sistema + Mensagem Real do Paciente dentro do primeiro bloco de entrada
-      const mensagemInjetada = `[DIRETRIZES DE COMPORTAMENTO E OPERAÇÃO - ATUE ESTRITAMENTE SOB ESTAS REGRAS]:\n${config.prompt_sistema}\n\n[MENSAGEM ATUAL DO PACIENTE]: ${mensagemTexto}`;
-      
-      historico.push({ role: 'user', parts: [{ text: mensagemInjetada }] });
-    } else {
-      console.log(`[ORION TELEMETRIA] [${requestId}] 📜 Histórico existente localizado (${historico.length} entradas). Anexando nova mensagem de resposta.`);
-      historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
-    }
-
-    // Chamada limpa e sem propriedades voláteis ao endpoint estável de Produção v1
-    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Despachando payload universal para o gateway v1 estável...`);
-    const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // --- ENGENHARIA DE APONTAMENTO DA URL PARA MODELO ATIVO ESTÁVEL (gemini-2.5-flash) ---
+    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando payload estável para o modelo ativo gemini-2.5-flash...`);
+    const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const startTimeGemini = Date.now();
     const responseGemini = await fetch(urlGemini, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: historico
+        contents: historico,
+        systemInstruction: { parts: [{ text: config.prompt_sistema }] } // camelCase totalmente suportado no modelo ativo
       })
     });
 
