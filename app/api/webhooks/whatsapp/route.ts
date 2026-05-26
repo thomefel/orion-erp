@@ -106,11 +106,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'human_intervention_active' });
     }
 
+    // --- MONTAGEM DA MEMÓRIA COM INJEÇÃO CONTEXTUAL ANTI-ERROS ---
     let historico = logConversa ? logConversa.historico_mensagens : [];
-    historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    // --- ENGENHARIA DE APONTAMENTO DA URL PARA MODELO ATIVO ESTÁVEL (gemini-2.5-flash) ---
-    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando payload estável para o modelo ativo gemini-2.5-flash...`);
+    if (historico.length === 0) {
+      console.log(`[ORION TELEMETRIA] [${requestId}] 🧠 Primeira interação. Injetando prompt de sistema no corpo da mensagem.`);
+      const superPrompt = `[INSTRUÇÕES DO SISTEMA - ATUE ESTRITAMENTE SOB ESTAS DIRETRIZES]:\n${config.prompt_sistema}\n\n[MENSAGEM DO PACIENTE]: ${mensagemTexto}`;
+      historico.push({ role: 'user', parts: [{ text: superPrompt }] });
+    } else {
+      console.log(`[ORION TELEMETRIA] [${requestId}] 📜 Histórico localizado. Anexando mensagem de forma linear.`);
+      historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
+    }
+
+    // Chamada limpa enviando APENAS a chave 'contents', garantindo compatibilidade universal
+    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Despachando para o modelo ativo gemini-2.5-flash...`);
     const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const startTimeGemini = Date.now();
@@ -118,8 +127,7 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: historico,
-        systemInstruction: { parts: [{ text: config.prompt_sistema }] } // camelCase totalmente suportado no modelo ativo
+        contents: historico
       })
     });
 
