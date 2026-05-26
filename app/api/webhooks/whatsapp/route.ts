@@ -109,7 +109,7 @@ export async function POST(req: Request) {
     let historico = logConversa ? logConversa.historico_mensagens : [];
     historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    // --- ATUALIZAÇÃO DA ROTA: MUDANÇA DO GATEWAY DE v1beta PARA v1 ESTÁVEL ---
+    // --- CORREÇÃO DA CHAVE: ALTERADO PARA snake_case EXIGIDO PELO GATEWAY v1 ESTÁVEL ---
     console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando histórico para o gateway de produção v1 do Gemini 1.5 Flash...`);
     const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: historico,
-        systemInstruction: { parts: [{ text: config.prompt_sistema }] }
+        system_instruction: { parts: [{ text: config.prompt_sistema }] }
       })
     });
 
