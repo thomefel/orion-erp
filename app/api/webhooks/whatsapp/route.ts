@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     console.log(`[ORION TELEMETRIA] [${requestId}] Payload bruto recebido com sucesso.`);
 
     if (body.data?.key?.fromMe === true) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ| Mensagem enviada pela própria clínica. Ignorando.`);
+      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Mensagem enviada pela própria clínica. Ignorando.`);
       return NextResponse.json({ status: 'ignored_from_me' });
     }
 
@@ -59,11 +59,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'no_text_content' });
     }
 
-    if (!GEMINI_API_KEY) {
-      console.error(`[ORION TELEMETRIA] [${requestId}] ❌ ERRO CRÍTICO: Variável GEMINI_API_KEY não foi localizada no ambiente do servidor.`);
-      return NextResponse.json({ error: 'Missing Gemini API Key on server environment' }, { status: 500 });
-    }
-
     console.log(`[ORION TELEMETRIA] [${requestId}] Consultando tabela ia_config no Supabase...`);
     const { data: config, error: configError } = await supabase
       .from('ia_config')
@@ -78,7 +73,7 @@ export async function POST(req: Request) {
     }
 
     if (!config || !config.status_bot) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ| Robô de IA encontra-se desativado globalmente na tabela ia_config.`);
+      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Robô de IA encontra-se desativado globalmente na tabela ia_config.`);
       return NextResponse.json({ status: 'bot_disabled_in_database' });
     }
 
@@ -86,7 +81,7 @@ export async function POST(req: Request) {
     console.log(`[ORION TELEMETRIA] [${requestId}] Horário verificado. Fora do expediente comercial? ${foraDoExpediente}`);
     
     if (!foraDoExpediente) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ| Mensagem recebida dentro do expediente humano. Ignorando resposta automática.`);
+      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Mensagem recebida dentro do expediente humano. Ignorando resposta automática.`);
       return NextResponse.json({ status: 'inside_business_hours' });
     }
 
@@ -106,11 +101,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'human_intervention_active' });
     }
 
+    // --- ARQUITETURA DE INJEÇÃO CONTEXTUAL EXTRA-SEGURA ---
     let historico = logConversa ? logConversa.historico_mensagens : [];
-    historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    // --- ESPECIFICAÇÃO DE CHAVE RIGOROSA EM camelCase (systemInstruction) PARA O GATEWAY v1 ---
-    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando histórico para o gateway de produção v1 do Gemini 1.5 Flash...`);
+    if (historico.length === 0) {
+      console.log(`[ORION TELEMETRIA] [${requestId}] 🧠 Primeira interação detectada. Injetando Playbook Clínico diretamente no supercontexto inicial do usuário.`);
+      
+      // Fusão estruturada de Prompt de Sistema + Mensagem Real do Paciente dentro do primeiro bloco de entrada
+      const mensagemInjetada = `[DIRETRIZES DE COMPORTAMENTO E OPERAÇÃO - ATUE ESTRITAMENTE SOB ESTAS REGRAS]:\n${config.prompt_sistema}\n\n[MENSAGEM ATUAL DO PACIENTE]: ${mensagemTexto}`;
+      
+      historico.push({ role: 'user', parts: [{ text: mensagemInjetada }] });
+    } else {
+      console.log(`[ORION TELEMETRIA] [${requestId}] 📜 Histórico existente localizado (${historico.length} entradas). Anexando nova mensagem de resposta.`);
+      historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
+    }
+
+    // Chamada limpa e sem propriedades voláteis ao endpoint estável de Produção v1
+    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Despachando payload universal para o gateway v1 estável...`);
     const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const startTimeGemini = Date.now();
@@ -118,8 +125,7 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: historico,
-        systemInstruction: { parts: [{ text: config.prompt_sistema }] }
+        contents: historico
       })
     });
 
