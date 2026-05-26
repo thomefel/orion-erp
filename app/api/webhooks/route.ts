@@ -21,7 +21,8 @@ function isOutsideBusinessHours(inicio: string, fim: string): boolean {
   const minutosFim = hFim * 60 + mFim;
 
   if (minutosInicio > minutosFim) {
-    return minutosAgora >= minutosInicio || minutosAgora <= minutesFim;
+    // CORRIGIDO: Alterado de minutesFim para minutosFim para sanar o erro de build
+    return minutosAgora >= minutosInicio || minutosAgora <= minutosFim;
   }
   return minutosAgora >= minutosInicio && minutosAgora <= minutosFim;
 }
@@ -34,7 +35,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log(`[ORION TELEMETRIA] [${requestId}] Payload bruto recebido com sucesso.`);
 
-    // 1. Validar se a mensagem veio de nós mesmos
     if (body.data?.key?.fromMe === true) {
       console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Mensagem enviada pela própria clínica. Ignorando.`);
       return NextResponse.json({ status: 'ignored_from_me' });
@@ -46,7 +46,6 @@ export async function POST(req: Request) {
 
     console.log(`[ORION TELEMETRIA] [${requestId}] Paciente identificado: ${pacienteNome} (${numWhatsApp})`);
 
-    // 2. Extração Textual Fail-Safe
     let mensagemTexto = '';
     if (body.data?.message?.conversation) {
       mensagemTexto = body.data.message.conversation;
@@ -61,13 +60,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'no_text_content' });
     }
 
-    // 3. Validação das Credenciais de Infraestrutura
     if (!GEMINI_API_KEY) {
       console.error(`[ORION TELEMETRIA] [${requestId}] ❌ ERRO CRÍTICO: Variável GEMINI_API_KEY não foi localizada no ambiente do servidor.`);
       return NextResponse.json({ error: 'Missing Gemini API Key on server environment' }, { status: 500 });
     }
 
-    // 4. Conexão com o Supabase (Configuração)
     console.log(`[ORION TELEMETRIA] [${requestId}] Consultando tabela ia_config no Supabase...`);
     const { data: config, error: configError } = await supabase
       .from('ia_config')
@@ -84,7 +81,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'bot_disabled_in_database' });
     }
 
-    // 5. Auditoria de Horário de Plantão
     const foraDoExpediente = isOutsideBusinessHours(config.horario_inicio_rpa, config.horario_fim_rpa);
     console.log(`[ORION TELEMETRIA] [${requestId}] Horário verificado. Fora do expediente comercial? ${foraDoExpediente}`);
     
@@ -93,7 +89,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'inside_business_hours' });
     }
 
-    // 6. Conexão com o Supabase (Logs e Intervenção)
     console.log(`[ORION TELEMETRIA] [${requestId}] Verificando histórico e travas de intervenção humana...`);
     const { data: logConversa, error: logError } = await supabase
       .from('ia_conversas_logs')
@@ -110,11 +105,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'human_intervention_active' });
     }
 
-    // 7. Montagem de Memória Contextual
     let historico = logConversa ? logConversa.historico_mensagens : [];
     historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    // 8. Disparo ao Google Gemini
     console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando histórico para o processamento do Gemini 1.5 Flash...`);
     const urlGemini = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -146,7 +139,6 @@ export async function POST(req: Request) {
 
     historico.push({ role: 'model', parts: [{ text: textoRespostaIA }] });
 
-    // 9. Persistência de Memórias
     console.log(`[ORION TELEMETRIA] [${requestId}] Atualizando dados de memória no Supabase...`);
     await supabase.from('ia_conversas_logs').upsert({
       paciente_whatsapp: numWhatsApp,
@@ -156,7 +148,6 @@ export async function POST(req: Request) {
       data_interacao: new Date().toISOString()
     }, { onConflict: 'paciente_whatsapp' });
 
-    // 10. Despacho para a Evolution-API
     console.log(`[ORION TELEMETRIA] [${requestId}] 📤 Despachando texto via Evolution-API para o WhatsApp do paciente...`);
     const responseEvo = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
       method: 'POST',
