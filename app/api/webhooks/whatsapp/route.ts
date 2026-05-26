@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     console.log(`[ORION TELEMETRIA] [${requestId}] Payload bruto recebido com sucesso.`);
 
     if (body.data?.key?.fromMe === true) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Mensagem enviada pela própria clínica. Ignorando.`);
+      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ| Mensagem enviada pela própria clínica. Ignorando.`);
       return NextResponse.json({ status: 'ignored_from_me' });
     }
 
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     }
 
     if (!config || !config.status_bot) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Robô de IA encontra-se desativado globalmente na tabela ia_config.`);
+      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ| Robô de IA encontra-se desativado globalmente na tabela ia_config.`);
       return NextResponse.json({ status: 'bot_disabled_in_database' });
     }
 
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     console.log(`[ORION TELEMETRIA] [${requestId}] Horário verificado. Fora do expediente comercial? ${foraDoExpediente}`);
     
     if (!foraDoExpediente) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ️ Mensagem recebida dentro do expediente humano. Ignorando resposta automática.`);
+      console.log(`[ORION TELEMETRIA] [${requestId}] ℹ| Mensagem recebida dentro do expediente humano. Ignorando resposta automática.`);
       return NextResponse.json({ status: 'inside_business_hours' });
     }
 
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
     let historico = logConversa ? logConversa.historico_mensagens : [];
     historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
 
-    // --- CORREÇÃO DA CHAVE: ALTERADO PARA snake_case EXIGIDO PELO GATEWAY v1 ESTÁVEL ---
+    // --- ESPECIFICAÇÃO DE CHAVE RIGOROSA EM camelCase (systemInstruction) PARA O GATEWAY v1 ---
     console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Enviando histórico para o gateway de produção v1 do Gemini 1.5 Flash...`);
     const urlGemini = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: historico,
-        system_instruction: { parts: [{ text: config.prompt_sistema }] }
+        systemInstruction: { parts: [{ text: config.prompt_sistema }] }
       })
     });
 
