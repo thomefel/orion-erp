@@ -143,14 +143,16 @@ export async function POST(req: Request) {
       .eq('paciente_whatsapp', numWhatsApp)
       .maybeSingle();
 
-    // Se o carimbo mudou, outra execução assumiu o comando. Esta morre aqui.
-    if (logVerificacao && logVerificacao.data_interacao !== timestampInstancia) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] 🛑 Fluxo interceptado por nova mensagem. Cancelando.`);
-      return NextResponse.json({ status: 'debounced_by_subsequent_message' });
-    }
+    if (logVerificacao && logVerificacao.data_interacao) {
+      const dbTime = new Date(logVerificacao.data_interacao).getTime();
+      const instanciaTime = new Date(timestampInstancia).getTime();
 
-    // Se chegou até aqui, o usuário parou de digitar. Dispara para o Gemini.
-    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Executando chamada ao Gemini 2.5 Flash...`);
+      // Só cancela se o timestamp do banco for mais recente que o desta instância
+      if (dbTime > instanciaTime) {
+        console.log(`[ORION TELEMETRIA] [${requestId}] 🛑 Fluxo interceptado por nova mensagem mais recente. Cancelando.`);
+        return NextResponse.json({ status: 'debounced_by_subsequent_message' });
+      }
+    }
 
     // Chamada limpa enviando APENAS a chave 'contents', garantindo compatibilidade universal
     console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Despachando para o modelo ativo gemini-2.5-flash...`);
