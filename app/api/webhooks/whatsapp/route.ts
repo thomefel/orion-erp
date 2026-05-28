@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/app/lib/supabase';
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL || '';
 const EVO_INSTANCE = process.env.NEXT_PUBLIC_EVOLUTION_INSTANCE || '';
 const EVO_TOKEN = process.env.NEXT_PUBLIC_EVOLUTION_TOKEN || '';
@@ -106,17 +107,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'human_intervention_active' });
     }
 
-    // --- MONTAGEM DA MEMÓRIA COM INJEÇÃO CONTEXTUAL ANTI-ERROS ---
+    const timestampInstancia = new Date().toISOString();
     let historico = logConversa ? logConversa.historico_mensagens : [];
-
-    if (historico.length === 0) {
-      console.log(`[ORION TELEMETRIA] [${requestId}] 🧠 Primeira interação. Injetando prompt de sistema no corpo da mensagem.`);
-      const superPrompt = `[INSTRUÇÕES DO SISTEMA - ATUE ESTRITAMENTE SOB ESTAS DIRETRIZES]:\n${config.prompt_sistema}\n\n[MENSAGEM DO PACIENTE]: ${mensagemTexto}`;
-      historico.push({ role: 'user', parts: [{ text: superPrompt }] });
+    
+    // Agrupa mensagens se o último bloco já for do usuário
+    if (historico.length > 0 && historico[historico.length - 1].role === 'user') {
+      console.log(`[ORION TELEMETRIA] [${requestId}] 📥 Agrupando mensagem picada.`);
+      historico[historico.length - 1].parts[0].text += ` ${mensagemTexto}`;
     } else {
-      console.log(`[ORION TELEMETRIA] [${requestId}] 📜 Histórico localizado. Anexando mensagem de forma linear.`);
-      historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
+      if (historico.length === 0) {
+        const superPrompt = `[DIRETRIZES DE PERSONA E REGRAS DA CLÍNICA]:\n${config.prompt_sistema}\n\n[MENSAGEM DO PACIENTE]: ${mensagemTexto}`;
+        historico.push({ role: 'user', parts: [{ text: superPrompt }] });
+      } else {
+        historico.push({ role: 'user', parts: [{ text: mensagemTexto }] });
+      }
     }
+
+    // Grava o texto concatenado no banco e atualiza o carimbo de tempo
+    await supabase.from('ia_conversas_logs').upsert({
+      paciente_whatsapp: numWhatsApp,
+      paciente_nome: pacienteNome,
+      historico_mensagens: historico,
+      status_atendimento: 'AQUECIDO',
+      data_interacao: timestampInstancia
+    }, { onConflict: 'paciente_whatsapp' });
+
+    // Janela de espera tática (4 segundos)
+    console.log(`[ORION TELEMETRIA] [${requestId}] ⏱️ Janela de debouncing ativa...`);
+    await delay(4000);
+
+    // Re-audita o banco de dados
+    const { data: logVerificacao } = await supabase
+      .from('ia_conversas_logs')
+      .select('data_interacao')
+      .eq('paciente_whatsapp', numWhatsApp)
+      .maybeSingle();
+
+    // Se o carimbo mudou, outra execução assumiu o comando. Esta morre aqui.
+    if (logVerificacao && logVerificacao.data_interacao !== timestampInstancia) {
+      console.log(`[ORION TELEMETRIA] [${requestId}] 🛑 Fluxo interceptado por nova mensagem. Cancelando.`);
+      return NextResponse.json({ status: 'debounced_by_subsequent_message' });
+    }
+
+    // Se chegou até aqui, o usuário parou de digitar. Dispara para o Gemini.
+    console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Executando chamada ao Gemini 2.5 Flash...`);
 
     // Chamada limpa enviando APENAS a chave 'contents', garantindo compatibilidade universal
     console.log(`[ORION TELEMETRIA] [${requestId}] 🔥 Despachando para o modelo ativo gemini-2.5-flash...`);
