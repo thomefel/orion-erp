@@ -42,6 +42,8 @@ export default function DetalheNegociacao() {
   const [celularEditavel, setCelularEditavel] = useState("");
   const [msgAmigavel, setMsgAmigavel] = useState("");
   const [propostaDesconto, setPropostaDesconto] = useState(0);
+  const [parcelasAcordo, setParcelasAcordo] = useState(1);
+  const [jurosAcordo, setJurosAcordo] = useState(0);
 
   // Form inputs para preenchimento do documento robusto de Notificação RTD
   const [rtdNotificandEnd, setRtdNotificandEnd] = useState("");
@@ -77,10 +79,34 @@ export default function DetalheNegociacao() {
       setDevedor(data);
       setValorEditavel(data.valor_total);
       setCelularEditavel(data.celular || "");
+      setPropostaDesconto(data.proposta_desconto || 0);
+      setParcelasAcordo(data.parcelas_acordo || 1);
+      setJurosAcordo(data.juros_acordo || 0);
       setMsgAmigavel(`Olá, ${data.nome.split(' ')[0]}. Sou do setor de conciliação da AC Odontologia. Notamos valores pendentes há mais de 60 dias. Gostaríamos de ouvir você para chegarmos a uma solução boa para ambos. Podemos conversar sobre uma condition especial hoje?`);
     }
     setLoading(false);
   }
+
+  const handleUpdateProposta = async () => {
+    // Atualiza o registro inteiro com os dados das inputs no banco
+    const { error } = await supabase
+      .from('devedores_historicos')
+      .update({
+        proposta_desconto: propostaDesconto,
+        parcelas_acordo: parcelasAcordo,
+        juros_acordo: jurosAcordo,
+        proposta_enviada: true // Ativa automaticamente a flag do trilho visual
+      })
+      .eq('cpf', cpf);
+
+    if (!error) {
+      alert("Sucesso: Parâmetros da proposta salvos e registrados no banco de dados!");
+      fetchDevedor(); // Recarrega o estado do dossiê do devedor
+    } else {
+      console.error("Erro Supabase Proposta:", error);
+      alert("Erro operacional ao tentar persistir os parâmetros da proposta.");
+    }
+  };
 
   const toggleFlag = async (field: string, currentValue: boolean) => {
     const { error } = await supabase
@@ -373,7 +399,12 @@ export default function DetalheNegociacao() {
       doc.setFont("helvetica", "bold"); doc.text("CLÁUSULA SEGUNDA - DA FORMA DE PAGAMENTO E COMPOSIÇÃO:", 20, y);
       doc.setFont("helvetica", "normal");
       y += 6;
-      const c2 = `O valor acima confessado poderá ser liquidado integralmente à vista na assinatura deste termo ou conforme plano de parcelamento anuído entre as partes junto ao departamento de recuperação de ativos da clínica credora. A tolerância do CREDOR quanto a eventual atraso não constituirá novação contratual.`;
+      
+      const valorLiquidoFmt = (valorEditavel - propostaDesconto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const descontoFmt = propostaDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      
+      const c2 = `O valor originalmente confessado, após a aplicação de um desconto de cortesia concedido e aceito no importe de R$ ${descontoFmt}, resulta no montante líquido acordado de R$ ${valorLiquidoFmt}. As partes estipulam que este saldo remanescente será liquidado de forma parcelada, mediante o prazo fixado de ${parcelasAcordo} parcela(s) mensais, iguais e sucessivas, com a incidência de uma taxa de juros de parcelamento de ${jurosAcordo.toLocaleString('pt-BR')}% ao mês, nos exatos moldes acordados no ato de conciliação. A tolerância do CREDOR quanto a eventual atraso não constituirá novação contratual.`;
+      
       let splitC2 = doc.splitTextToSize(c2, 170);
       doc.text(splitC2, 20, y);
       y += (splitC2.length * 5) + 5;
@@ -596,18 +627,52 @@ export default function DetalheNegociacao() {
                 <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Proposta de Acordo</h4>
                 <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+75</span>
               </div>
-              <div className="flex gap-8 items-end">
-                <div className="flex-1">
-                    <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Simular Desconto de Cortesia (R$)</label>
-                    <input type="number" placeholder="0,00" value={propostaDesconto} onChange={(e) => setPropostaDesconto(Number(e.target.value))} className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" />
+{/* CONTAINER REARQUITETADO COM AS DUAS LINHAS DE CRITÉRIOS DE ACORDO */}
+              <div className="space-y-6">
+                {/* Linha 1: Desconto e Valor Líquido */}
+                <div className="flex gap-8 items-end">
+                  <div className="flex-1">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Simular Desconto de Cortesia (R$)</label>
+                      <input type="number" placeholder="0,00" value={propostaDesconto} onChange={(e) => setPropostaDesconto(Number(e.target.value))} className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" />
+                  </div>
+                  <div className="flex-1">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Valor Líquido da Proposta</label>
+                      <p className="text-xl font-black text-blue-600">R$ {(valorEditavel - propostaDesconto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                    <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Valor Líquido da Proposta</label>
-                    <p className="text-xl font-black text-blue-600">R$ {(valorEditavel - propostaDesconto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+
+                {/* Linha 2: Parcelas (Números Naturais) e Juros (Decimais Positivos) */}
+                <div className="flex gap-8 items-end pt-2 border-t border-slate-50">
+                  <div className="flex-1">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Número de Parcelas (Prazo)</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        step="1" 
+                        value={parcelasAcordo} 
+                        onChange={(e) => setParcelasAcordo(Math.max(1, Math.floor(Number(e.target.value))))} 
+                        className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" 
+                      />
+                  </div>
+                  <div className="flex-1">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Juros de Parcelamento (% ao mês)</label>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        placeholder="0,00" 
+                        value={jurosAcordo} 
+                        onChange={(e) => setJurosAcordo(Math.max(0, Number(e.target.value)))} 
+                        className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" 
+                      />
+                  </div>
+                  <button 
+                    onClick={handleUpdateProposta} 
+                    className={`px-10 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}
+                  >
+                      {devedor?.proposta_enviada ? 'Proposta Salva' : 'Registrar Envio'}
+                  </button>
                 </div>
-                <button onClick={() => toggleFlag('proposta_enviada', devedor?.proposta_enviada)} className={`px-10 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}>
-                    {devedor?.proposta_enviada ? 'Proposta Salva' : 'Registrar Envio'}
-                </button>
               </div>
             </div>
           </div>

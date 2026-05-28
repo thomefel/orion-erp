@@ -35,7 +35,6 @@ export default function SupervisorPage() {
   async function fetchConfig() {
     setLoadingConfig(true);
     try {
-      // Alterado de .single() para .maybeSingle() para evitar a quebra caso a tabela tenha 0 linhas
       const { data, error } = await supabase
         .from('ia_config')
         .select('*')
@@ -47,10 +46,8 @@ export default function SupervisorPage() {
         console.error('Erro crítico detectado no Supabase:', error);
         setStatusMessage(`Erro ao carregar parâmetros: ${error.message}`);
       } else if (data) {
-        // Se encontrou a configuração, alimenta o estado normalmente
         setConfig(data);
       } else {
-        // Se data veio null (tabela vazia), o próprio sistema cria a primeira linha padrão automaticamente
         setStatusMessage('Nenhuma configuração localizada. Inicializando parâmetros baseline...');
         
         const { data: seededData, error: seedError } = await supabase
@@ -210,7 +207,7 @@ export default function SupervisorPage() {
             </div>
           </div>
 
-          {/* Campo de Texto para Ajuste de Prompt do Sistema */}
+          {/* Campo de Texto para Ajuste de Prompt do Sistema (REARQUITETADO COM ESPAÇO PARA 60 LINHAS) */}
           <div className="mb-8 text-left">
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 text-left flex items-center gap-1">
               <MessageSquare size={12} className="text-blue-600" /> Diretrizes de Comportamento e Persona (System Instruction)
@@ -218,7 +215,8 @@ export default function SupervisorPage() {
             <textarea 
               value={config.prompt_sistema || ''}
               onChange={(e) => setConfig({ ...config, prompt_sistema: e.target.value })}
-              className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm text-slate-700 font-medium h-36 outline-none focus:ring-2 focus:ring-blue-100 transition-all text-left leading-relaxed"
+              rows={60}
+              className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm text-slate-700 font-medium h-[800px] outline-none focus:ring-2 focus:ring-blue-100 transition-all text-left leading-relaxed resize-y"
             />
           </div>
 
