@@ -46,14 +46,22 @@ export default function FiscalPage() {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
+  // Estados para o novo Modal de Inclusão Manual Controlada
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualNome, setManualNome] = useState('');
+  const [manualDoc, setManualDoc] = useState('');
+  const [manualData, setManualData] = useState('');
+  const [manualValor, setManualValor] = useState<number>(0);
+
   const [fileStates, setFileStates] = useState({
     patients: { loaded: false, name: '' },
+    extras: { loaded: false, name: '' },
     inter: { loaded: false, name: '' },
     sicredi: { loaded: false, name: '' }
   });
 
-  const cleanCPF = (cpf: any) => String(cpf || '').replace(/\D/g, '');
-  const validateCPF = (cpf: string) => cpf.length === 11;
+  const cleanDocumento = (doc: any) => String(doc || '').replace(/\D/g, '').slice(0, 14);
+  const validateDocumento = (doc: string) => /^\d{11}$|^\d{14}$/.test(doc);
 
   const normalizeText = (text: string) => {
     return String(text || '')
@@ -87,7 +95,7 @@ export default function FiscalPage() {
     const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
     return dataToValidate.map(item => {
       let errors = [];
-      if (!validateCPF(item.paciente_cpf)) errors.push('CPF Inválido');
+      if (!validateDocumento(item.paciente_cpf)) errors.push('CPF/CNPJ Inválido (deve ter 11 ou 14 dígitos numéricos)');
       if (item.valor_servico <= 0) errors.push('Valor nulo');
       if (!item.data_competencia || !dateRegex.test(item.data_competencia.trim())) errors.push('Data inválida');
 
@@ -134,6 +142,7 @@ export default function FiscalPage() {
       setLocalData([]);
       setFileStates({
         patients: { ...fileStates.patients },
+        extras: { loaded: false, name: '' },
         inter: { loaded: false, name: '' },
         sicredi: { loaded: false, name: '' }
       });
@@ -151,15 +160,55 @@ export default function FiscalPage() {
       const mapping: Record<string, string[]> = {};
       json.forEach(row => {
         const nomeRaw = String(row.Paciente || row.Nome || row.A || '').trim();
-        const cpfRaw = String(row.Documento || row.CPF || row.D || '').trim();
+        const cpfRaw = String(row.Documento || row.CPF || row.CNPJ || row.D || '').trim();
         if (!nomeRaw) return;
         const nomeNorm = normalizeText(nomeRaw);
-        const cpf = cleanCPF(cpfRaw);
+        const docLimpo = cleanDocumento(cpfRaw);
         if (!mapping[nomeNorm]) mapping[nomeNorm] = [];
-        if (cpf && !mapping[nomeNorm].includes(cpf)) mapping[nomeNorm].push(cpf);
+        if (docLimpo && !mapping[nomeNorm].includes(docLimpo)) mapping[nomeNorm].push(docLimpo);
       });
       setPatientsMap(mapping);
-      setFileStates(prev => ({ ...prev, patients: { loaded: true, name: file.name } }));
+      setFileStates(prev => ({ 
+        ...prev, 
+        patients: { loaded: true, name: file.name },
+        extras: { loaded: false, name: '' }
+      }));
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleExtrasUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 }) as any[][];
+      
+      setPatientsMap(prev => {
+        const updated = { ...prev };
+        rows.forEach(row => {
+          if (!row || row.length < 2) return;
+          const nomeRaw = String(row[0] || '').trim();
+          const docRaw = String(row[1] || '').trim();
+          
+          if (!nomeRaw) return;
+          const nomeUpper = nomeRaw.toUpperCase();
+          if (nomeUpper === 'NOME' || nomeUpper.includes('PACIENTES EXTRAS')) return;
+          
+          const nomeNorm = normalizeText(nomeRaw);
+          const docLimpo = cleanDocumento(docRaw);
+          
+          if (!updated[nomeNorm]) updated[nomeNorm] = [];
+          if (docLimpo && !updated[nomeNorm].includes(docLimpo)) {
+            updated[nomeNorm].push(docLimpo);
+          }
+        });
+        return updated;
+      });
+
+      setFileStates(prev => ({ ...prev, extras: { loaded: true, name: file.name } }));
     };
     reader.readAsArrayBuffer(file);
   };
@@ -176,7 +225,7 @@ export default function FiscalPage() {
         id_temp: `formatted_${Date.now()}_${index}`,
         data_competencia: row.Data || '',
         valor_servico: Number(row.Valor) || 0,
-        paciente_cpf: cleanCPF(row.CPF || ''),
+        paciente_cpf: cleanDocumento(row.CPF || row.CNPJ || row.Documento || ''),
         paciente_nome: row.Paciente || 'IMPORTADO',
         origem: 'Planilha Formatada',
         isValid: false,
@@ -218,15 +267,15 @@ export default function FiscalPage() {
         if (nomeNorm.includes('AC ODONTOLOGIA')) return;
 
         const valorLimpo = Number(cols[3].replace('.', '').replace(',', '.'));
-        const cpfsEncontrados = patientsMap[nomeNorm] || [];
-        let cpfFinal = 'NAO ENCONTRADO';
-        if (cpfsEncontrados.length === 1) cpfFinal = cpfsEncontrados[0];
+        const docsEncontrados = patientsMap[nomeNorm] || [];
+        let docFinal = 'NAO ENCONTRADO';
+        if (docsEncontrados.length === 1) docFinal = docsEncontrados[0];
 
         extracted.push({
           id_temp: `inter_${Date.now()}_${index}`,
           data_competencia: cols[0].trim(),
           valor_servico: Math.abs(valorLimpo),
-          paciente_cpf: cpfFinal,
+          paciente_cpf: docFinal,
           paciente_nome: nomeBruto.toUpperCase(),
           origem: 'Inter PJ',
           isValid: false
@@ -283,7 +332,7 @@ export default function FiscalPage() {
             if (cleanLine.includes('RECEBIMENTO PIX')) {
               const dateMatch = fullLine.match(/(\d{2}\/\d{2}\/\d{4})/);
               const valueMatch = fullLine.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
-              const descMatch = fullLine.match(/RECEBIMENTO PIX\s+(?:SICREDI\s+)?(\d{11})\s+(.*?)(?:\s+PIX_CRED|PIX_CRE|PIX CRED|\d{9}|$)/i);
+              const descMatch = fullLine.match(/RECEBIMENTO PIX\s+(?:SICREDI\s+)?(\d{11}|\d{14})\s+(.*?)(?:\s+PIX_CRED|PIX_CRE|PIX CRED|\d{9}|$)/i);
               if (dateMatch && valueMatch && descMatch) {
                 const nomeExtraido = descMatch[2].trim().toUpperCase();
                 if (normalizeText(nomeExtraido).includes('AC ODONTOLOGIA')) return;
@@ -325,17 +374,34 @@ export default function FiscalPage() {
     } catch (err) { console.error("Erro ao carregar motor de PDF."); }
   };
 
+  // Gatilho para resetar estados e abrir o Modal estruturado de inclusão manual
   const handleAddManual = () => {
+    setManualNome('');
+    setManualDoc('');
+    setManualData('');
+    setManualValor(0);
+    setIsManualModalOpen(true);
+  };
+
+  // Confirmação e injeção do rascunho preenchido no fim do array local
+  const handleConfirmManual = () => {
+    if (!manualNome.trim()) {
+      alert("Erro operacional: O preenchimento do nome do tomador do serviço é obrigatório.");
+      return;
+    }
+
     const newRow: LocalRecord = {
       id_temp: `manual_${Date.now()}`,
-      data_competencia: '',
-      valor_servico: 0,
-      paciente_cpf: '',
-      paciente_nome: 'ENTRADA MANUAL',
+      data_competencia: manualData.trim(),
+      valor_servico: manualValor,
+      paciente_cpf: manualDoc.trim() || 'NAO ENCONTRADO',
+      paciente_nome: manualNome.trim().toUpperCase(),
       origem: 'Manual',
       isValid: false
     };
-    setLocalData(prev => [newRow, ...prev]);
+
+    setLocalData(prev => getValidatedData([...prev, newRow]));
+    setIsManualModalOpen(false);
   };
 
   const handleUpdateField = (id: string, field: keyof LocalRecord, value: any) => {
@@ -364,7 +430,6 @@ export default function FiscalPage() {
         origem: item.origem
       }));
       const { error } = await supabase.from('rascunhos_fiscal').insert(payload);
-      
       if (error) throw error;
       alert('Rascunho salvo com sucesso!');
     } catch (err) { 
@@ -442,19 +507,42 @@ export default function FiscalPage() {
       {viewMode === 'local' && (
         <div className="space-y-8 mt-8 text-left">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className={`relative p-6 rounded-3xl border-2 border-dashed transition-all ${fileStates.patients.loaded ? 'bg-emerald-50 border-emerald-500' : 'bg-white border-slate-200 hover:border-emerald-400'}`}>
-              <Users className={fileStates.patients.loaded ? 'text-emerald-500' : 'text-slate-300'} size={32} />
-              <p className="text-xs font-black uppercase mt-2">1. Lista de Pacientes</p>
-              <input id="xlsx-up" type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handlePatientsUpload} accept=".xlsx, .csv" />
+            
+            <div className="flex flex-col gap-3 h-full">
+              <div className={`relative flex-[3] p-5 rounded-3xl border-2 border-dashed transition-all flex flex-col justify-center ${fileStates.patients.loaded ? 'bg-emerald-50 border-emerald-500' : 'bg-white border-slate-200 hover:border-emerald-400'}`}>
+                <div className="flex items-center gap-3">
+                  <Users className={fileStates.patients.loaded ? 'text-emerald-500' : 'text-slate-300'} size={28} />
+                  <div className="text-left">
+                    <p className="text-xs font-black uppercase">1. Lista de Pacientes</p>
+                    {fileStates.patients.loaded && <span className="text-[10px] text-slate-400 block truncate max-w-[180px] font-bold mt-0.5">{fileStates.patients.name}</span>}
+                  </div>
+                </div>
+                <input id="xlsx-up" type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handlePatientsUpload} accept=".xlsx, .csv" />
+              </div>
+              
+              <div className={`relative flex-[1] p-3 rounded-2xl border-2 border-dashed transition-all flex flex-col justify-center ${!fileStates.patients.loaded ? 'opacity-40 grayscale cursor-not-allowed' : fileStates.extras.loaded ? 'bg-purple-50 border-purple-500' : 'bg-white border-slate-200 hover:border-purple-400'}`}>
+                <div className="flex items-center gap-3">
+                  <Plus className={fileStates.extras.loaded ? 'text-purple-500' : 'text-slate-300'} size={16} />
+                  <div className="text-left">
+                    <p className="text-[10px] font-black uppercase">1.1 Pacientes Extras</p>
+                    {fileStates.extras.loaded && <span className="text-[9px] text-slate-400 block truncate max-w-[180px] mt-0.5">{fileStates.extras.name}</span>}
+                  </div>
+                </div>
+                <input id="xlsx-extras" type="file" disabled={!fileStates.patients.loaded} className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed" onChange={handleExtrasUpload} accept=".xlsx, .csv" />
+              </div>
             </div>
+
             <div className={`relative p-6 rounded-3xl border-2 border-dashed transition-all ${!fileStates.patients.loaded ? 'opacity-50 grayscale cursor-not-allowed' : fileStates.inter.loaded ? 'bg-blue-50 border-blue-500' : 'bg-white border-slate-200 hover:border-blue-400'}`}>
               <FileSpreadsheet className={fileStates.inter.loaded ? 'text-blue-500' : 'text-slate-300'} size={32} />
               <p className="text-xs font-black uppercase mt-2">2. Extrato Inter (CSV)</p>
+              {fileStates.inter.loaded && <span className="text-[10px] text-slate-400 block truncate max-w-[200px] font-bold mt-1">{fileStates.inter.name}</span>}
               <input id="input-inter" type="file" disabled={!fileStates.patients.loaded} className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleInterUpload} accept=".csv" />
             </div>
+
             <div className={`relative p-6 rounded-3xl border-2 border-dashed transition-all ${fileStates.sicredi.loaded ? 'bg-orange-50 border-orange-500' : 'bg-white border-slate-200 hover:border-orange-400'}`}>
               <FileText className={fileStates.sicredi.loaded ? 'text-orange-500' : 'text-slate-300'} size={32} />
               <p className="text-xs font-black uppercase mt-2">3. Extrato Sicredi (PDF)</p>
+              {fileStates.sicredi.loaded && <span className="text-[10px] text-slate-400 block truncate max-w-[200px] font-bold mt-1">{fileStates.sicredi.name}</span>}
               <input id="input-sicredi" type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleSicrediUpload} accept=".pdf" />
             </div>
           </div>
@@ -484,7 +572,7 @@ export default function FiscalPage() {
               <thead>
                 <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
                   <th className="px-6 py-4 text-left">Origem / Status</th>
-                  <th className="px-6 py-4 min-w-[300px] text-left">Paciente / CPF</th>
+                  <th className="px-6 py-4 min-w-[300px] text-left">Paciente / CPF/CNPJ</th>
                   <th className="px-6 py-4 text-left">Data</th>
                   <th className="px-6 py-4 text-left">Valor (R$)</th>
                   <th className="px-6 py-4 text-right">Ações</th>
@@ -505,7 +593,7 @@ export default function FiscalPage() {
                     </td>
                     <td className="px-6 py-4 text-left">
                       <div className="text-xs font-black text-slate-900 mb-1 uppercase">{item.paciente_nome}</div>
-                      <input type="text" value={item.paciente_cpf} onChange={e => handleUpdateField(item.id_temp, 'paciente_cpf', cleanCPF(e.target.value))} className={`bg-slate-50 px-2 py-1 rounded border w-full text-xs font-mono ${item.paciente_cpf === 'NAO ENCONTRADO' ? 'border-red-300 text-red-500 font-black' : 'border-slate-100'}`} />
+                      <input type="text" value={item.paciente_cpf} onChange={e => handleUpdateField(item.id_temp, 'paciente_cpf', cleanDocumento(e.target.value))} placeholder="CPF ou CNPJ (apenas números)" className={`bg-slate-50 px-2 py-1 rounded border w-full text-xs font-mono ${!validateDocumento(item.paciente_cpf) ? 'border-red-300 text-red-500 font-black' : 'border-slate-100'}`} />
                     </td>
                     <td className="px-6 py-4 text-left"><input type="text" value={item.data_competencia} onChange={e => handleUpdateField(item.id_temp, 'data_competencia', e.target.value)} placeholder="DD/MM/AAAA" className="bg-transparent border-b border-dashed w-24 outline-none" /></td>
                     <td className="px-6 py-4 text-left"><input type="number" value={item.valor_servico} onChange={e => handleUpdateField(item.id_temp, 'valor_servico', Number(e.target.value))} className="bg-transparent font-bold w-24 outline-none" /></td>
@@ -534,7 +622,7 @@ export default function FiscalPage() {
               <thead>
                 <tr className="bg-white text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
                   <th className="px-6 py-4 text-center">Status</th>
-                  <th className="px-6 py-4 font-bold text-left">CPF</th>
+                  <th className="px-6 py-4 font-bold text-left">CPF/CNPJ</th>
                   <th className="px-6 py-4 text-left">Data</th>
                   <th className="px-6 py-4 text-center">Valor</th>
                   <th className="px-6 py-4 text-left">Serviço/Alíquota</th>
@@ -563,6 +651,84 @@ export default function FiscalPage() {
             <div className="text-right">
               <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Total</span>
               <span className="text-2xl font-black text-violet-600">R$ {cloudData.reduce((acc, row) => acc + (Number(row.valor_servico) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- POPUP/MODAL INTERNO DE INCLUSÃO MANUAL CONTROLADA --- */}
+      {isManualModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] border border-slate-100 shadow-2xl max-w-md w-full p-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="font-black text-lg text-slate-900 uppercase italic flex items-center gap-2">
+                  <Plus size={20} className="text-violet-600" /> Nova Entrada Manual
+                </h3>
+                <p className="text-xs text-slate-400 font-medium uppercase mt-0.5">Preencha os dados operacionais do faturamento</p>
+              </div>
+              <button onClick={() => setIsManualModalOpen(false)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors cursor-pointer">
+                <XCircle size={22} />
+              </button>
+            </div>
+            
+            <div className="space-y-4 text-left">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Nome do Tomador</label>
+                <input 
+                  type="text" 
+                  value={manualNome} 
+                  onChange={e => setManualNome(e.target.value)} 
+                  placeholder="EX: JOÃO DA SILVA OU RAZÃO SOCIAL LTDA" 
+                  className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-violet-500/20 text-slate-800 uppercase"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">CPF ou CNPJ (Apenas números)</label>
+                <input 
+                  type="text" 
+                  value={manualDoc} 
+                  onChange={e => setManualDoc(cleanDocumento(e.target.value))} 
+                  placeholder="Ex: 12345678901 ou 12345678000199" 
+                  className="w-full bg-slate-50 p-3 rounded-xl font-bold font-mono outline-none border border-transparent focus:border-violet-500/20 text-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Data Competência</label>
+                  <input 
+                    type="text" 
+                    value={manualData} 
+                    onChange={e => setManualData(maskDate(e.target.value))} 
+                    placeholder="DD/MM/AAAA" 
+                    className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-violet-500/20 text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Valor do Serviço (R$)</label>
+                  <input 
+                    type="number" 
+                    value={manualValor || ''} 
+                    onChange={e => setManualValor(Number(e.target.value))} 
+                    placeholder="0.00" 
+                    className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-violet-500/20 text-slate-800"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4 mt-6 flex gap-3">
+              <button onClick={() => setIsManualModalOpen(false)} className="flex-1 bg-slate-100 text-slate-500 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer text-center">
+                Cancelar
+              </button>
+              <button 
+                onClick={handleConfirmManual}
+                className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all cursor-pointer text-center shadow-lg shadow-violet-100"
+              >
+                Incluir
+              </button>
             </div>
           </div>
         </div>

@@ -88,23 +88,22 @@ export default function DetalheNegociacao() {
   }
 
   const handleUpdateProposta = async () => {
-    // Atualiza o registro inteiro com os dados das inputs no banco
+    // Atualiza estritamente os parâmetros numéricos da proposta calculada
     const { error } = await supabase
       .from('devedores_historicos')
       .update({
         proposta_desconto: propostaDesconto,
         parcelas_acordo: parcelasAcordo,
-        juros_acordo: jurosAcordo,
-        proposta_enviada: true // Ativa automaticamente a flag do trilho visual
+        juros_acordo: jurosAcordo
       })
       .eq('cpf', cpf);
 
     if (!error) {
-      alert("Sucesso: Parâmetros da proposta salvos e registrados no banco de dados!");
-      fetchDevedor(); // Recarrega o estado do dossiê do devedor
+      alert("Sucesso: Parâmetros da proposta salvos com sucesso no banco de dados!");
+      fetchDevedor(); 
     } else {
       console.error("Erro Supabase Proposta:", error);
-      alert("Erro operacional ao tentar persistir os parâmetros da proposta.");
+      alert("Erro operacional ao tentar salvar os parâmetros da proposta.");
     }
   };
 
@@ -519,383 +518,267 @@ export default function DetalheNegociacao() {
       </section>
 
       {/* SEÇÃO 2: TRILHO DE NEGOCIAÇÃO */}
-      <section className="bg-white p-12 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden">
-        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-16 flex items-center gap-2">
-          <Gavel size={14} className="text-blue-600" /> Fluxo Cronológico de Recuperação Extrajudicial e Judicial
+      {/* SEÇÃO 2: MATRIZ DE FLUXO DINÂMICO E BIFURCAÇÕES DE NEGOCIAÇÃO */}
+      <section className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-sm mb-12">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-12 flex items-center gap-2">
+          <Scale size={14} className="text-blue-600" /> Matriz de Fluxo Dinâmico e Bifurcações de Negociação
         </h3>
 
-        <div className="absolute left-[71px] top-40 bottom-24 w-px bg-slate-100 z-0"></div>
-
-        <div className="space-y-16 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
           
-          {/* 01. ABORDAGEM CONSULTIVA */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.notificacao_amigavel ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">01</span>}
-              </div>
+          {/* COLUNA A: FUNIL EXTRAJUDICIAL (NOTIFICAÇÕES DE ESCALAÇÃO) */}
+          <div className="space-y-6">
+            <div className="p-4 bg-slate-900 rounded-2xl text-white">
+              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">🟢 TRILHO A: FUNIL EXTRAJUDICIAL</h4>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Fluxo de cobrança ativa e notificações progressivas por silêncio.</p>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 relative ${sendingMessage ? 'opacity-40 pointer-events-none' : ''} ${devedor?.notificacao_amigavel ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
-              {sendingMessage && (
-                <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-[32px] flex flex-col items-center justify-center gap-3 z-30 pointer-events-auto">
-                  <Hourglass className="animate-spin text-blue-600" size={32} />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 animate-pulse">enviando mensagem...</span>
-                </div>
-              )}
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Abordagem Consultiva</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+75</span>
-              </div>
-              <div className="flex gap-6 items-start">
-                <textarea 
-                  className="flex-1 bg-white border border-slate-200 rounded-2xl p-5 text-sm text-slate-600 font-medium h-24 outline-none focus:ring-2 focus:ring-blue-100 transition-all"
-                  value={msgAmigavel}
-                  onChange={(e) => setMsgAmigavel(e.target.value)}
-                />
-                <div className="flex flex-col gap-3">
-                    <button onClick={() => enviarWhatsApp(msgAmigavel)} className="bg-slate-900 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg flex items-center gap-2 cursor-pointer">
-                        <Send size={14} /> Enviar Mensagem
-                    </button>
-                    <button onClick={() => toggleFlag('notificacao_amigavel', devedor?.notificacao_amigavel)} className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
-                        {devedor?.notificacao_amigavel ? 'Realizado' : 'Marcar Executado'}
-                    </button>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* 02. HIGIENIZAÇÃO DE CONTATO */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white shadow-amber-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.contato_desatualizado ? <Phone size={18} /> : <span className="font-black text-xs">02</span>}
-              </div>
-            </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.contato_desatualizado ? 'bg-amber-50/20 border-amber-200 shadow-sm shadow-amber-50/50' : 'bg-slate-50/50 border-transparent'}`}>
+            {/* ABORDAGEM CONSULTIVA */}
+            <div className={`p-6 rounded-3xl border ${sendingMessage ? 'opacity-40 pointer-events-none' : ''} ${devedor?.notificacao_amigavel ? 'bg-emerald-50/20 border-emerald-100' : 'bg-slate-50/50 border-slate-100'}`}>
               <div className="flex justify-between items-start mb-4">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Higienização e Validação Cadastral</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+65</span>
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">01. Abordagem Consultiva</span>
+                <span className="text-[9px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">D+60 a D+75</span>
               </div>
-              <p className="text-xs font-semibold text-slate-500 mb-4 uppercase">
-                Status Atual do Contato: <span className={devedor?.contato_desatualizado ? "text-amber-600 font-black" : "text-emerald-600 font-black"}>{devedor?.contato_desatualizado ? "Inacessível / Inválido" : "Validado / Ativo"}</span>
-              </p>
-              <div className="flex flex-wrap gap-4 items-end bg-white p-6 rounded-2xl border border-slate-100 shadow-inner">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Telefone Celular Vinculado</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ex: 47999999999" 
-                    value={celularEditavel} 
-                    onChange={(e) => setCelularEditavel(e.target.value)} 
-                    className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-700 outline-none text-xs focus:ring-2 focus:ring-blue-100" 
-                  />
-                </div>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <button 
-                    onClick={handleUpdateCelular}
-                    disabled={savingCelular}
-                    className="bg-slate-900 text-white px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-md flex items-center gap-2 cursor-pointer"
-                  >
-                    {savingCelular ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar Número
-                  </button>
-                  <button 
-                    onClick={() => setIsContatoModalOpen(true)}
-                    className="bg-white border border-slate-200 text-slate-600 px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
-                  >
-                    Localizar Dados
-                  </button>
-                  <button 
-                    onClick={() => toggleFlag('contato_desatualizado', devedor?.contato_desatualizado)} 
-                    className={`px-6 h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}
-                  >
-                    {devedor?.contato_desatualizado ? 'Desatualizado' : 'Marcar Inválido'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 03. PROPOSTA DE ACORDO */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.proposta_enviada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">03</span>}
-              </div>
-            </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.proposta_enviada ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Proposta de Acordo</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+60 a D+75</span>
-              </div>
-{/* CONTAINER REARQUITETADO COM AS DUAS LINHAS DE CRITÉRIOS DE ACORDO */}
-              <div className="space-y-6">
-                {/* Linha 1: Desconto e Valor Líquido */}
-                <div className="flex gap-8 items-end">
-                  <div className="flex-1">
-                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Simular Desconto de Cortesia (R$)</label>
-                      <input type="number" placeholder="0,00" value={propostaDesconto} onChange={(e) => setPropostaDesconto(Number(e.target.value))} className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" />
-                  </div>
-                  <div className="flex-1">
-                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Valor Líquido da Proposta</label>
-                      <p className="text-xl font-black text-blue-600">R$ {(valorEditavel - propostaDesconto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                  </div>
-                </div>
-
-                {/* Linha 2: Parcelas (Números Naturais) e Juros (Decimais Positivos) */}
-                <div className="flex gap-8 items-end pt-2 border-t border-slate-50">
-                  <div className="flex-1">
-                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Número de Parcelas (Prazo)</label>
-                      <input 
-                        type="number" 
-                        min="1" 
-                        step="1" 
-                        value={parcelasAcordo} 
-                        onChange={(e) => setParcelasAcordo(Math.max(1, Math.floor(Number(e.target.value))))} 
-                        className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" 
-                      />
-                  </div>
-                  <div className="flex-1">
-                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-2">Juros de Parcelamento (% ao mês)</label>
-                      <input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        placeholder="0,00" 
-                        value={jurosAcordo} 
-                        onChange={(e) => setJurosAcordo(Math.max(0, Number(e.target.value)))} 
-                        className="w-full bg-white border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none" 
-                      />
-                  </div>
-                  <button 
-                    onClick={handleUpdateProposta} 
-                    className={`px-10 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}
-                  >
-                      {devedor?.proposta_enviada ? 'Proposta Salva' : 'Registrar Envio'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 04. NOTIFICAÇÃO SIMPLES (Fase Renomeada) */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-blue-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.notificacao_extrajudicial ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">04</span>}
-              </div>
-            </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.notificacao_extrajudicial ? 'bg-blue-50/30 border-blue-100' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Notificação Simples</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+75 a D+90</span>
-              </div>
-              <div className="flex gap-4">
-                <button 
-                  onClick={generateNotificationPDF}
-                  disabled={statusLoadingPDF}
-                  className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer"
-                >
-                  {statusLoadingPDF ? <Loader2 className="animate-spin text-blue-600" size={18} /> : <FileText size={18} className="text-blue-600" />} 
-                  {statusLoadingPDF ? 'Gerando Documento...' : 'Emitir PDF de Notificação Formal'}
+              <textarea 
+                className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-600 font-medium h-20 outline-none focus:ring-1 focus:ring-blue-500 mb-3"
+                value={msgAmigavel}
+                onChange={(e) => setMsgAmigavel(e.target.value)}
+              />
+              <div className="flex flex-col gap-2">
+                <button onClick={() => enviarWhatsApp(msgAmigavel)} className="w-full bg-slate-900 text-white py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-1 cursor-pointer">
+                  <Send size={12} /> Enviar Mensagem
                 </button>
-                <button onClick={() => toggleFlag('notificacao_extrajudicial', devedor?.notificacao_extrajudicial)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_extrajudicial ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                <button onClick={() => toggleFlag('notificacao_amigavel', devedor?.notificacao_amigavel)} className={`w-full py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                  {devedor?.notificacao_amigavel ? 'Realizado' : 'Marcar Executado'}
+                </button>
+              </div>
+              <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
+                <p className="text-blue-600">➔ Se Respondeu: Avançar p/ TRILHO B</p>
+                <p className="text-slate-500">➔ Se Ignorou: Prosseguir p/ Notificação Simples</p>
+              </div>
+            </div>
+
+            {/* NOTIFICAÇÃO SIMPLES */}
+            <div className={`p-6 rounded-3xl border ${devedor?.notificacao_extrajudicial ? 'bg-blue-50/20 border-blue-100' : 'bg-slate-50/50 border-slate-100'}`}>
+              <div className="flex justify-between items-start mb-4">
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">02. Notificação Simples</span>
+                <span className="text-[9px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">D+75 a D+90</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button onClick={generateNotificationPDF} disabled={statusLoadingPDF} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-3 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 cursor-pointer">
+                  {statusLoadingPDF ? <Loader2 className="animate-spin text-blue-600" size={12} /> : <FileText size={12} className="text-blue-600" />} 
+                  Emitir PDF Notificação
+                </button>
+                <button onClick={() => toggleFlag('notificacao_extrajudicial', devedor?.notificacao_extrajudicial)} className={`w-full py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_extrajudicial ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
                   {devedor?.notificacao_extrajudicial ? 'Notificado' : 'Marcar Executado'}
                 </button>
               </div>
-            </div>
-          </div>
-
-          {/* 05. NOTIFICAÇÃO EXTRAJUDICIAL VIA CARTÓRIO RTD (NOVA CAMADA INJETADA) */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.notificacao_rtd ? 'bg-orange-600 text-white shadow-orange-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.notificacao_rtd ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">05</span>}
+              <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
+                <p className="text-blue-600">➔ Se Respondeu: Avançar p/ TRILHO B</p>
+                <p className="text-slate-500">➔ Se Ignorou: Prosseguir p/ Cartório RTD</p>
               </div>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.notificacao_rtd ? 'bg-orange-50/30 border-orange-100' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Notificação Extrajudicial via Cartório RTD</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+90 a D+100</span>
+
+            {/* NOTIFICAÇÃO EXTRAJUDICIAL VIA CARTÓRIO RTD (TODOS OS 6 CAMPOS INTEGRAIS) */}
+            <div className={`p-6 rounded-3xl border ${devedor?.notificacao_rtd ? 'bg-orange-50/10 border-orange-100' : 'bg-slate-50/50 border-slate-100'}`}>
+              <div className="flex justify-between items-start mb-4">
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">03. Notificação via Cartório RTD</span>
+                <span className="text-[9px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">D+90 a D+100</span>
+              </div>
+              
+              {/* TODOS OS 6 CAMPOS DA IMPLEMENTAÇÃO ORIGINAL REENCAIXADOS AQUI */}
+              <div className="space-y-2 mb-4 bg-white p-3 rounded-xl border border-slate-100 shadow-inner text-[11px]">
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-0.5">Endereço do Notificado</label>
+                  <input type="text" value={rtdNotificandEnd} onChange={(e) => setRtdNotificandEnd(e.target.value)} placeholder="Ex: Av. Nereu Ramos, 1200..." className="w-full bg-slate-50 border-none rounded p-1.5 outline-none font-bold text-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-0.5">Origem da Obrigação</label>
+                  <input type="text" value={rtdOrigemObrigacao} onChange={(e) => setRtdOrigemObrigacao(e.target.value)} className="w-full bg-slate-50 border-none rounded p-1.5 outline-none font-bold text-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-0.5">Descrição do Débito</label>
+                  <input type="text" value={rtdDescricaoDebito} onChange={(e) => setRtdDescricaoDebito(e.target.value)} className="w-full bg-slate-50 border-none rounded p-1.5 outline-none font-bold text-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-0.5">Prazo para Regularização</label>
+                  <input type="text" value={rtdPrazoDias} onChange={(e) => setRtdPrazoDias(e.target.value)} className="w-full bg-slate-50 border-none rounded p-1.5 outline-none font-bold text-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-0.5">Chave PIX</label>
+                  <input type="text" value={rtdChavePix} onChange={(e) => setRtdChavePix(e.target.value)} className="w-full bg-slate-50 border-none rounded p-1.5 outline-none font-bold text-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-0.5">Dados Bancários para Depósito</label>
+                  <input type="text" value={rtdDadosBanco} onChange={(e) => setRtdDadosBanco(e.target.value)} className="w-full bg-slate-50 border-none rounded p-1.5 outline-none font-bold text-slate-700" />
+                </div>
               </div>
 
-              {/* Grid de Inputs adicionais para preenchimento contábil e de localização */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-white p-6 rounded-2xl border border-slate-100 shadow-inner">
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Endereço do Notificado</label>
-                  <input type="text" value={rtdNotificandEnd} onChange={(e) => setRtdNotificandEnd(e.target.value)} placeholder="Ex: Av. Nereu Ramos, 1200, Apto 401, Meia Praia, Itapema/SC" className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-orange-200" />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Origem da Obrigação</label>
-                  <input type="text" value={rtdOrigemObrigacao} onChange={(e) => setRtdOrigemObrigacao(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-orange-200" />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Descrição do Débito</label>
-                  <input type="text" value={rtdDescricaoDebito} onChange={(e) => setRtdDescricaoDebito(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-orange-200" />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Prazo para Regularização</label>
-                  <input type="text" value={rtdPrazoDias} onChange={(e) => setRtdPrazoDias(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-orange-200" />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Chave PIX</label>
-                  <input type="text" value={rtdChavePix} onChange={(e) => setRtdChavePix(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-orange-200" />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Dados de Depósito Bancário</label>
-                  <input type="text" value={rtdDadosBanco} onChange={(e) => setRtdDadosBanco(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-orange-200" />
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <button 
-                  onClick={generateRtdPDF}
-                  disabled={statusLoadingRtdPDF}
-                  className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer"
-                >
-                  {statusLoadingRtdPDF ? <Loader2 className="animate-spin text-orange-600" size={18} /> : <FileDown size={18} className="text-orange-600" />} 
-                  {statusLoadingRtdPDF ? 'Gerando Documento...' : 'Gerar Notificação RTD Robusta'}
+              <div className="flex flex-col gap-2">
+                <button onClick={generateRtdPDF} disabled={statusLoadingRtdPDF} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 cursor-pointer">
+                  {statusLoadingRtdPDF ? <Loader2 className="animate-spin text-orange-600" size={12} /> : <FileDown size={12} className="text-orange-600" />} 
+                  Gerar PDF RTD Robusto
                 </button>
-                <button 
-                  onClick={() => setIsRtdModalOpen(true)}
-                  className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer"
-                >
-                  <BookOpen size={18} className="text-slate-500" /> Manual RTD Cartório
+                <button onClick={() => setIsRtdModalOpen(true)} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-500 cursor-pointer">
+                  <BookOpen size={12} className="text-slate-400" /> Manual RTD Cartório
                 </button>
-                <button onClick={() => toggleFlag('notificacao_rtd', devedor?.notificacao_rtd)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_rtd ? 'bg-orange-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                <button onClick={() => toggleFlag('notificacao_rtd', devedor?.notificacao_rtd)} className={`w-full py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_rtd ? 'bg-orange-600 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
                   {devedor?.notificacao_rtd ? 'Protocolado' : 'Marcar Executado'}
                 </button>
               </div>
+              <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
+                <p className="text-blue-600">➔ Se Respondeu: Avançar p/ TRILHO B</p>
+                <p className="text-red-500">➔ Se Ignorou: Avançar p/ TRILHO C (Coercitivo)</p>
+              </div>
             </div>
-          </div>
 
-          {/* 06. ACORDO FIRMADO */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.acordo_firmado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">06</span>}
-              </div>
-            </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.acordo_firmado ? 'bg-emerald-50/30 border-emerald-100' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Firmamento de Acordo</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+75 a D+90</span>
-              </div>
-              <div className="flex items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <p className="text-xs font-medium text-slate-500">O paciente aceitou formalmente os termos da negociação e os novos prazos de pagamento.</p>
-                <button onClick={() => toggleFlag('acordo_firmado', devedor?.acordo_firmado)} className={`px-12 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg'}`}>
-                   {devedor?.acordo_firmado ? 'Acordo Ativo' : 'Confirmar Aceite'}
-                </button>
+            {/* HIGIENIZAÇÃO DE CONTATO (ORGANIZADO COMO ENCARTE UTILIÁRIO) */}
+            <div className={`p-6 rounded-3xl border ${devedor?.contato_desatualizado ? 'bg-amber-50/20 border-amber-200' : 'bg-slate-50/50 border-slate-100'}`}>
+              <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-3">Validação Cadastral</span>
+              <p className="text-[10px] font-semibold text-slate-400 mb-2 uppercase">Status: <span className={devedor?.contato_desatualizado ? "text-amber-600 font-black" : "text-emerald-600 font-black"}>{devedor?.contato_desatualizado ? "Inválido" : "Ativo"}</span></p>
+              <input type="text" placeholder="Ex: 47999999999" value={celularEditavel} onChange={(e) => setCelularEditavel(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-bold text-slate-700 text-xs mb-3 outline-none" />
+              <div className="flex gap-2">
+                <button onClick={handleUpdateCelular} disabled={savingCelular} className="flex-1 bg-slate-900 text-white py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer">{savingCelular ? '...' : 'Salvar'}</button>
+                <button onClick={() => setIsContatoModalOpen(true)} className="flex-1 bg-white border border-slate-200 text-slate-600 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer">Buscar</button>
+                <button onClick={() => toggleFlag('contato_desatualizado', devedor?.contato_desatualizado)} className={`px-3 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}>Maturar</button>
               </div>
             </div>
           </div>
 
-          {/* 07. CONFISSÃO DE DÍVIDA */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-violet-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.confissao_assinada ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">07</span>}
-              </div>
+          {/* COLUNA B: NÚCLEO DE CONCILIAÇÃO (TRILHO DE ACORDO E COMPOSIÇÃO) */}
+          <div className="space-y-6">
+            <div className="p-4 bg-blue-600 rounded-2xl text-white">
+              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">🔵 TRILHO B: ACORDO E COMPOSIÇÃO</h4>
+              <p className="text-[10px] text-blue-100 mt-1 font-medium">Ativado em tempo real no momento exato em que o paciente manifestar resposta.</p>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.confissao_assinada ? 'bg-violet-50/30 border-violet-100' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex items-center gap-3">
-                    <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Confissão de Dívida</h4>
-                    <span className="text-[9px] font-black text-amber-600 uppercase bg-amber-50 px-2 py-1 rounded border border-amber-100">Título Executivo</span>
+
+            {/* SIMULAÇÃO DA PROPOSTA DE ACORDO (COMPACTA) */}
+            <div className={`p-6 rounded-3xl border bg-white border-blue-100 shadow-sm shadow-blue-50/50`}>
+              <span className="block font-black text-[10px] uppercase tracking-wider text-blue-600 mb-4">04. Critérios da Proposta de Acordo</span>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Simular Desconto de Cortesia (R$)</label>
+                  <input type="number" placeholder="0,00" value={propostaDesconto} onChange={(e) => setPropostaDesconto(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 font-bold text-slate-700 outline-none text-xs" />
                 </div>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+75 a D+90</span>
-              </div>
-              <div className="flex gap-4">
-                <button 
-                  onClick={generateConfissaoPDF}
-                  disabled={statusLoadingConfissaoPDF}
-                  className="flex-1 flex items-center justify-center gap-3 bg-white border border-slate-200 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 shadow-sm cursor-pointer"
-                >
-                  {statusLoadingConfissaoPDF ? <Loader2 className="animate-spin text-violet-600" size={18} /> : <FileDown size={18} className="text-violet-600" />} 
-                  {statusLoadingConfissaoPDF ? 'Gerando Termo...' : 'Gerar Termo p/ Assinatura (Art. 784, III, CPC)'}
-                </button>
-                <button onClick={() => toggleFlag('confissao_assinada', devedor?.confissao_assinada)} className={`px-12 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
-                  {devedor?.confissao_assinada ? 'Assinado' : 'Marcar Executado'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 08. CARTÓRIO E RESTRIÇÕES */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.protesto_realizado ? 'bg-red-600 text-white shadow-red-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.protesto_realizado ? <CheckCircle2 size={20} /> : <span className="font-black text-xs">08</span>}
-              </div>
-            </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.protesto_realizado ? 'bg-red-50/30 border-red-100' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-slate-900 italic">Medidas Coercitivas</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+90 a D+120</span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button onClick={() => setIsProtestModalOpen(true)} className={`py-5 rounded-2xl border font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
-                    Protestar em Cartório (Itapema/SC)
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Número de Parcelas</label>
+                    <input type="number" min="1" step="1" value={parcelasAcordo} onChange={(e) => setParcelasAcordo(Math.max(1, Math.floor(Number(e.target.value))))} className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 font-bold text-slate-700 outline-none text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Juros (% ao mês)</label>
+                    <input type="number" min="0" step="0.01" placeholder="0,00" value={jurosAcordo} onChange={(e) => setJurosAcordo(Math.max(0, Number(e.target.value)))} className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 font-bold text-slate-700 outline-none text-xs" />
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-slate-50 flex justify-between items-center">
+                  <span className="text-[9px] font-black text-slate-400 uppercase">Valor Líquido:</span>
+                  <span className="text-base font-black text-blue-600">R$ {(valorEditavel - propostaDesconto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button onClick={handleUpdateProposta} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-md cursor-pointer">Salvar Proposta</button>
+                  <button onClick={() => toggleFlag('proposta_enviada', devedor?.proposta_enviada)} className={`flex-1 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100' : 'bg-white border border-slate-200 text-slate-400'}`}>
+                    {devedor?.proposta_enviada ? 'Anular Envio' : 'Registrar Envio'}
                   </button>
-                  <button onClick={() => setIsNegativacaoModalOpen(true)} className={`py-5 rounded-2xl border font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
-                    Negativação SPC/Serasa
-                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* FIRMAMENTO DE ACORDO */}
+            <div className={`p-6 rounded-3xl border ${devedor?.acordo_firmado ? 'bg-emerald-50/20 border-emerald-100' : 'bg-slate-50/50 border-slate-100'}`}>
+              <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-2">05. Firmamento de Acordo</span>
+              <p className="text-[11px] font-medium text-slate-400 mb-4">O paciente expressou aceite formal aos termos, prazos e taxas simuladas.</p>
+              <button onClick={() => toggleFlag('acordo_firmado', devedor?.acordo_firmado)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
+                {devedor?.acordo_firmado ? 'Acordo Ativo' : 'Confirmar Aceite'}
+              </button>
+            </div>
+
+            {/* CONFISSÃO DE DÍVIDA E ASSINATURA DO TERMO */}
+            <div className={`p-6 rounded-3xl border ${devedor?.confissao_assinada ? 'bg-violet-50/20 border-violet-100' : 'bg-slate-50/50 border-slate-100'}`}>
+              <div className="flex justify-between items-start mb-4">
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">06. Confissão de Dívida (Termo)</span>
+                <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">Título Executivo</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button onClick={generateConfissaoPDF} disabled={statusLoadingConfissaoPDF} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 cursor-pointer">
+                  {statusLoadingConfissaoPDF ? <Loader2 className="animate-spin text-violet-600" size={12} /> : <FileDown size={12} className="text-violet-600" />} 
+                  Emitir Termo com Acordo
+                </button>
+                <button onClick={() => toggleFlag('confissao_assinada', devedor?.confissao_assinada)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                  {devedor?.confissao_assinada ? 'Termo Assinado' : 'Marcar Executado'}
+                </button>
+              </div>
+
+              {/* ARQUITETURA DE COMPORTAMENTOS CONDICIONAIS PÓS-ACORDO */}
+              <div className="mt-5 p-3.5 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] space-y-2.5">
+                <span className="block font-black text-slate-400 uppercase tracking-wider">Mapeamento Tático Pós-Acordo</span>
+                <div className="space-y-2 font-bold">
+                  <div className="flex items-start gap-1.5 text-slate-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1 shrink-0"></span>
+                    <p>1. Parou de responder / Não assinou ➔ <span className="text-red-500">Regredir p/ TRILHO A (Notificações)</span></p>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1 shrink-0"></span>
+                    <p>2. Assinou e está pagando em dia ➔ <span className="text-emerald-600">Dossiê em Adimplência (Sucesso)</span></p>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1 shrink-0"></span>
+                    <p>3. Assinou e quebrou as parcelas ➔ <span className="text-amber-600">Avançar p/ TRILHO C (Fase Coercitiva)</span></p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* 09. JUDICIALIZAÇÃO */}
-          <div className="flex gap-12 group">
-            <div className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${devedor?.judicializado ? 'bg-slate-900 text-white shadow-slate-100' : 'bg-white border-2 border-slate-100 text-slate-200'}`}>
-                {devedor?.judicializado ? <Scale size={20} /> : <span className="font-black text-xs">09</span>}
-              </div>
+          {/* COLUNA C: FASE SANCIONATÓRIA (MEDIDAS COERCITIVAS E EXECUÇÃO JUDICIAL) */}
+          <div className="space-y-6">
+            <div className="p-4 bg-red-600 rounded-2xl text-white">
+              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">🔴 TRILHO C: FASE SANCIONATÓRIA</h4>
+              <p className="text-[10px] text-red-100 mt-1 font-medium">Acionado por silêncio total contumaz ou quebra do Termo de Confissão assinado.</p>
             </div>
-            <div className={`flex-1 p-8 rounded-[32px] border transition-all duration-500 ${devedor?.judicializado ? 'bg-slate-900 text-white' : 'bg-slate-50/50 border-transparent'}`}>
-              <div className="flex justify-between items-start mb-6">
-                <h4 className={`font-black text-sm uppercase tracking-widest italic ${devedor?.judicializado ? 'text-blue-400' : 'text-slate-900'}`}>Execução Judicial</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">D+120 +</span>
-              </div>
-              <div className={`p-6 rounded-2xl border flex items-center justify-between ${devedor?.judicializado ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100 shadow-sm'}`}>
-                 <div className="flex items-center gap-4">
-                    <AlertTriangle className={devedor?.judicializado ? 'text-blue-400' : 'text-red-500'} size={24} />
-                    <div>
-                        <p className={`text-xs font-black uppercase tracking-tight ${devedor?.judicializado ? 'text-white' : 'text-slate-900'}`}>Ajuizamento de Ação</p>
-                        <p className="text-[10px] font-medium text-slate-400">Preparar dossiê completo para o fórum de Itapema.</p>
-                    </div>
-                 </div>
-                 <button onClick={() => toggleFlag('judicializado', devedor?.judicializado)} className={`px-12 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.judicializado ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
-                    {devedor?.judicializado ? 'Processo Ativo' : 'Iniciar Judicialização'}
-                 </button>
-              </div>
-            </div>
-          </div>
 
-          {/* 10. ENCERRAMENTO DO REGISTRO (DENTRO DO TRILHO) */}
-          <div className="flex gap-12 group pb-8">
-            <div className="flex flex-col items-center">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white border-2 border-slate-100 text-red-500 shadow-xl transition-all duration-500">
-                <Trash2 size={20} />
+            {/* MEDIDAS COERCITIVAS */}
+            <div className={`p-6 rounded-3xl border ${devedor?.protesto_realizado ? 'bg-red-50/10 border-red-100' : 'bg-slate-50/50 border-slate-100'}`}>
+              <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-4">07. Restrições e Medidas Coercitivas</span>
+              <div className="flex flex-col gap-2">
+                <button onClick={() => setIsProtestModalOpen(true)} className={`py-3 rounded-xl border font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
+                  Protestar em Cartório (Itapema/SC)
+                </button>
+                <button onClick={() => setIsNegativacaoModalOpen(true)} className={`py-3 rounded-xl border font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
+                  Negativação SPC/Serasa
+                </button>
+              </div>
+              <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400">
+                <p className="text-slate-900">➔ Permanecendo Inerte: Escalar p/ Execução Judicial</p>
               </div>
             </div>
-            <div className="flex-1 p-8 rounded-[32px] bg-red-50/30 border border-transparent">
-              <div className="flex justify-between items-start mb-6">
-                <h4 className="font-black text-sm uppercase tracking-widest text-red-600 italic">Descarte ou Quitação Final</h4>
-                <span className="text-[10px] font-black text-slate-300 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">Fim da Trajetória</span>
+
+            {/* EXECUÇÃO JUDICIAL */}
+            <div className={`p-6 rounded-3xl border ${devedor?.judicializado ? 'bg-slate-900 text-white' : 'bg-slate-50/50 border-slate-100'}`}>
+              <div className="flex justify-between items-start mb-4">
+                <span className={`font-black text-[10px] uppercase tracking-wider ${devedor?.judicializado ? 'text-blue-400' : 'text-slate-900'}`}>08. Execução Judicial</span>
+                <span className="text-[9px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100 text-slate-900">D+120 +</span>
               </div>
-              <button 
-                onClick={handleDeleteDebt}
-                disabled={isDeleting}
-                className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
-              >
-                {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <XCircle size={16} />}
-                {isDeleting ? 'Excluindo...' : 'Excluir Registro de Dívida permanentemente'}
+              <div className={`p-4 rounded-xl border mb-4 flex flex-col gap-1 ${devedor?.judicializado ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                <p className={`text-[10px] font-black uppercase ${devedor?.judicializado ? 'text-white' : 'text-slate-900'}`}>Ajuizamento de Ação</p>
+                <p className="text-[9px] font-medium text-slate-400">Dossiê completo protocolado no Fórum da Comarca de Itapema/SC.</p>
+              </div>
+              <button onClick={() => toggleFlag('judicializado', devedor?.judicializado)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.judicializado ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
+                {devedor?.judicializado ? 'Processo Ativo' : 'Iniciar Judicialização'}
+              </button>
+            </div>
+
+            {/* QUITAÇÃO OU EXCLUSÃO DE REGISTRO */}
+            <div className="p-6 rounded-3xl bg-red-50/30 border border-transparent">
+              <span className="block font-black text-[10px] uppercase tracking-wider text-red-600 mb-2">Descarte ou Quitação Final</span>
+              <button onClick={handleDeleteDebt} disabled={isDeleting} className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-700 transition-all flex items-center justify-center gap-1 cursor-pointer">
+                {isDeleting ? <Loader2 className="animate-spin" size={12} /> : <XCircle size={12} />}
+                {isDeleting ? 'Excluindo...' : 'Excluir Registro de Dívida'}
               </button>
             </div>
           </div>
 
         </div>
       </section>
-
       {/* --- POPUP/MODAL INTERNO 1: MANUAL OPERACIONAL DO PROTESTANTE (ITAPEMA/SC) --- */}
       {isProtestModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
