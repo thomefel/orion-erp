@@ -9,15 +9,19 @@ const EVO_TOKEN = process.env.NEXT_PUBLIC_EVOLUTION_TOKEN || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 function isOutsideBusinessHours(inicio: string, fim: string): boolean {
-  const agora = new Date();
-  const diaSemana = agora.getDay(); 
+  // Força a criação da data capturando e convertendo o fuso de forma estrita para Brasília
+  const dataBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  
+  const diaSemana = dataBrasilia.getDay(); 
 
+  // Finais de semana (Sábado = 6, Domingo = 0) o robô atende direto
   if (diaSemana === 0 || diaSemana === 6) return true;
 
   const [hInicio, mInicio] = inicio.split(':').map(Number);
   const [hFim, mFim] = fim.split(':').map(Number);
 
-  const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+  // Extrai horas e minutos já convertidos e higienizados do fuso brasileiro
+  const minutosAgora = dataBrasilia.getHours() * 60 + dataBrasilia.getMinutes();
   const minutosInicio = hInicio * 60 + mInicio;
   const minutosFim = hFim * 60 + mFim;
 
