@@ -47,10 +47,10 @@ export default function DetalheNegociacao() {
 
   // Form inputs para preenchimento do documento robusto de Notificação RTD
   const [rtdNotificandEnd, setRtdNotificandEnd] = useState("");
-  const [rtdOrigemObrigacao, setRtdOrigemObrigacao] = useState("Prestação de Serviços Odontológicos contratados");
+  const [rtdOrigemObrigacao, setRtdOrigemObrigacao] = useState("Prestação de Serviços Odontológicos");
   const [rtdDescricaoDebito, setRtdDescricaoDebito] = useState("Parcelas em aberto de tratamento clínico executado");
   const [rtdPrazoDias, setRtdPrazoDias] = useState("5 (cinco) dias úteis");
-  const [rtdChavePix, setRtdChavePix] = useState("financeiro@acodontologia.com.br");
+  const [rtdChavePix, setRtdChavePix] = useState("acodontologia.itapema@gmail.com");
   const [rtdDadosBanco, setRtdDadosBanco] = useState("Banco Inter - Agência 0001 - C/C 123456-7");
   const [rtdResponsavelNome, setRtdResponsavelNome] = useState("AC ODONTOLOGIA");
   const [rtdResponsavelCargo, setRtdResponsavelCargo] = useState("Departamento de Recuperação de Ativos");
@@ -471,15 +471,15 @@ export default function DetalheNegociacao() {
           <ChevronLeft size={16} /> Voltar para a lista
         </button>
         <h1 className="text-4xl font-black text-slate-900 uppercase italic">
-          Gestão de <span className="text-blue-600 not-italic">Acordo</span>
+          <span className="text-blue-600 not-italic">{devedor?.nome}</span>
         </h1>
-        <p className="text-slate-500 font-medium mt-1">Roadmap Estratégico de Recuperação • {devedor?.nome}</p>
+        <p className="text-slate-500 font-medium mt-1">Sequência das ações de cobrança</p>
       </header>
 
       {/* SEÇÃO 1: INFORMAÇÕES DA DÍVIDA */}
       <section className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-sm mb-12">
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
-          <User size={14} className="text-blue-600" /> Dossiê Consolidado do Devedor
+          <User size={14} className="text-blue-600" /> Informações do Devedor
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 items-end">
@@ -499,7 +499,7 @@ export default function DetalheNegociacao() {
 
           <div className="md:col-span-2 flex items-end gap-4">
             <div className="flex-1">
-              <label className="block text-[9px] font-black text-blue-600 uppercase mb-2">Montante em Aberto (R$)</label>
+              <label className="block text-[9px] font-black text-blue-600 uppercase mb-2">Valor em Aberto (R$)</label>
               <input 
                 type="number" 
                 value={valorEditavel}
@@ -521,7 +521,7 @@ export default function DetalheNegociacao() {
       {/* SEÇÃO 2: MATRIZ DE FLUXO DINÂMICO E BIFURCAÇÕES DE NEGOCIAÇÃO */}
       <section className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-sm mb-12">
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-12 flex items-center gap-2">
-          <Scale size={14} className="text-blue-600" /> Matriz de Fluxo Dinâmico e Bifurcações de Negociação
+          <Scale size={14} className="text-blue-600" /> Matriz de Negociação - Ações X Comportamento do Devedor
         </h3>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -529,14 +529,14 @@ export default function DetalheNegociacao() {
           {/* COLUNA A: FUNIL EXTRAJUDICIAL (NOTIFICAÇÕES DE ESCALAÇÃO) */}
           <div className="space-y-6">
             <div className="p-4 bg-slate-900 rounded-2xl text-white">
-              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">🟢 TRILHO A: FUNIL EXTRAJUDICIAL</h4>
-              <p className="text-[10px] text-slate-400 mt-1 font-medium">Fluxo de cobrança ativa e notificações progressivas por silêncio.</p>
+              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">TRILHO A: FUNIL EXTRAJUDICIAL</h4>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Contato inicial e ações progressivas devido inação do devedor</p>
             </div>
 
             {/* ABORDAGEM CONSULTIVA */}
             <div className={`p-6 rounded-3xl border ${sendingMessage ? 'opacity-40 pointer-events-none' : ''} ${devedor?.notificacao_amigavel ? 'bg-emerald-50/20 border-emerald-100' : 'bg-slate-50/50 border-slate-100'}`}>
               <div className="flex justify-between items-start mb-4">
-                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">01. Abordagem Consultiva</span>
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">01. Abordagem Amigável</span>
                 <span className="text-[9px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">D+60 a D+75</span>
               </div>
               <textarea 
@@ -549,12 +549,12 @@ export default function DetalheNegociacao() {
                   <Send size={12} /> Enviar Mensagem
                 </button>
                 <button onClick={() => toggleFlag('notificacao_amigavel', devedor?.notificacao_amigavel)} className={`w-full py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_amigavel ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
-                  {devedor?.notificacao_amigavel ? 'Realizado' : 'Marcar Executado'}
+                  {devedor?.notificacao_amigavel ? 'Mensagem Enviada' : 'Marcar Executado'}
                 </button>
               </div>
               <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
-                <p className="text-blue-600">➔ Se Respondeu: Avançar p/ TRILHO B</p>
-                <p className="text-slate-500">➔ Se Ignorou: Prosseguir p/ Notificação Simples</p>
+                <p className="text-blue-600">➔ Se Respondeu: avançar para TRILHO B</p>
+                <p className="text-slate-500">➔ Se Ignorou: prosseguir para Notificação Simples</p>
               </div>
             </div>
 
@@ -574,8 +574,8 @@ export default function DetalheNegociacao() {
                 </button>
               </div>
               <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
-                <p className="text-blue-600">➔ Se Respondeu: Avançar p/ TRILHO B</p>
-                <p className="text-slate-500">➔ Se Ignorou: Prosseguir p/ Cartório RTD</p>
+                <p className="text-blue-600">➔ Se Respondeu: avançar para TRILHO B</p>
+                <p className="text-slate-500">➔ Se Ignorou: prosseguir para Notificação via Cartório RTD</p>
               </div>
             </div>
 
@@ -617,44 +617,44 @@ export default function DetalheNegociacao() {
               <div className="flex flex-col gap-2">
                 <button onClick={generateRtdPDF} disabled={statusLoadingRtdPDF} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 cursor-pointer">
                   {statusLoadingRtdPDF ? <Loader2 className="animate-spin text-orange-600" size={12} /> : <FileDown size={12} className="text-orange-600" />} 
-                  Gerar PDF RTD Robusto
+                  Emitir PDF Notificação RTD
                 </button>
                 <button onClick={() => setIsRtdModalOpen(true)} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-500 cursor-pointer">
-                  <BookOpen size={12} className="text-slate-400" /> Manual RTD Cartório
+                  <BookOpen size={12} className="text-slate-400" /> Manual Notificação RTD
                 </button>
                 <button onClick={() => toggleFlag('notificacao_rtd', devedor?.notificacao_rtd)} className={`w-full py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_rtd ? 'bg-orange-600 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
                   {devedor?.notificacao_rtd ? 'Protocolado' : 'Marcar Executado'}
                 </button>
               </div>
               <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
-                <p className="text-blue-600">➔ Se Respondeu: Avançar p/ TRILHO B</p>
-                <p className="text-red-500">➔ Se Ignorou: Avançar p/ TRILHO C (Coercitivo)</p>
+                <p className="text-blue-600">➔ Se Respondeu: avançar para TRILHO B</p>
+                <p className="text-red-500">➔ Se Ignorou: avançar para TRILHO C</p>
               </div>
             </div>
 
             {/* HIGIENIZAÇÃO DE CONTATO (ORGANIZADO COMO ENCARTE UTILIÁRIO) */}
             <div className={`p-6 rounded-3xl border ${devedor?.contato_desatualizado ? 'bg-amber-50/20 border-amber-200' : 'bg-slate-50/50 border-slate-100'}`}>
-              <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-3">Validação Cadastral</span>
+              <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-3">Validação do Celular</span>
               <p className="text-[10px] font-semibold text-slate-400 mb-2 uppercase">Status: <span className={devedor?.contato_desatualizado ? "text-amber-600 font-black" : "text-emerald-600 font-black"}>{devedor?.contato_desatualizado ? "Inválido" : "Ativo"}</span></p>
               <input type="text" placeholder="Ex: 47999999999" value={celularEditavel} onChange={(e) => setCelularEditavel(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-bold text-slate-700 text-xs mb-3 outline-none" />
               <div className="flex gap-2">
                 <button onClick={handleUpdateCelular} disabled={savingCelular} className="flex-1 bg-slate-900 text-white py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer">{savingCelular ? '...' : 'Salvar'}</button>
                 <button onClick={() => setIsContatoModalOpen(true)} className="flex-1 bg-white border border-slate-200 text-slate-600 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer">Buscar</button>
-                <button onClick={() => toggleFlag('contato_desatualizado', devedor?.contato_desatualizado)} className={`px-3 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}>Maturar</button>
+                <button onClick={() => toggleFlag('contato_desatualizado', devedor?.contato_desatualizado)} className={`px-3 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.contato_desatualizado ? 'bg-amber-500 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}>Invalidar</button>
               </div>
             </div>
           </div>
 
           {/* COLUNA B: NÚCLEO DE CONCILIAÇÃO (TRILHO DE ACORDO E COMPOSIÇÃO) */}
           <div className="space-y-6">
-            <div className="p-4 bg-blue-600 rounded-2xl text-white">
-              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">🔵 TRILHO B: ACORDO E COMPOSIÇÃO</h4>
-              <p className="text-[10px] text-blue-100 mt-1 font-medium">Ativado em tempo real no momento exato em que o paciente manifestar resposta.</p>
+            <div className="p-4 bg-slate-900 rounded-2xl text-white">
+              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">TRILHO B: ACORDO E TERMO DE DÍVIDA</h4>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Ações para quando o paciente responder e aceitar acordo</p>
             </div>
 
             {/* SIMULAÇÃO DA PROPOSTA DE ACORDO (COMPACTA) */}
             <div className={`p-6 rounded-3xl border bg-white border-blue-100 shadow-sm shadow-blue-50/50`}>
-              <span className="block font-black text-[10px] uppercase tracking-wider text-blue-600 mb-4">04. Critérios da Proposta de Acordo</span>
+              <span className="block font-black text-[10px] uppercase tracking-wider mb-4">04. Simulação para Proposta de Acordo</span>
               <div className="space-y-4">
                 <div>
                   <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Simular Desconto de Cortesia (R$)</label>
@@ -675,10 +675,7 @@ export default function DetalheNegociacao() {
                   <span className="text-base font-black text-blue-600">R$ {(valorEditavel - propostaDesconto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <button onClick={handleUpdateProposta} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-md cursor-pointer">Salvar Proposta</button>
-                  <button onClick={() => toggleFlag('proposta_enviada', devedor?.proposta_enviada)} className={`flex-1 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.proposta_enviada ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100' : 'bg-white border border-slate-200 text-slate-400'}`}>
-                    {devedor?.proposta_enviada ? 'Anular Envio' : 'Registrar Envio'}
-                  </button>
+                  <button onClick={handleUpdateProposta} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-md cursor-pointer">Salvar Simulação</button>
                 </div>
               </div>
             </div>
@@ -686,22 +683,21 @@ export default function DetalheNegociacao() {
             {/* FIRMAMENTO DE ACORDO */}
             <div className={`p-6 rounded-3xl border ${devedor?.acordo_firmado ? 'bg-emerald-50/20 border-emerald-100' : 'bg-slate-50/50 border-slate-100'}`}>
               <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-2">05. Firmamento de Acordo</span>
-              <p className="text-[11px] font-medium text-slate-400 mb-4">O paciente expressou aceite formal aos termos, prazos e taxas simuladas.</p>
-              <button onClick={() => toggleFlag('acordo_firmado', devedor?.acordo_firmado)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
-                {devedor?.acordo_firmado ? 'Acordo Ativo' : 'Confirmar Aceite'}
+              <p className="text-[11px] font-medium text-slate-400 mb-4">O paciente expressou aceite formal aos termos, prazos e taxas</p>
+              <button onClick={() => toggleFlag('acordo_firmado', devedor?.acordo_firmado)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.acordo_firmado ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                {devedor?.acordo_firmado ? 'Acordo Aceito' : 'Marcar Executado'}
               </button>
             </div>
 
             {/* CONFISSÃO DE DÍVIDA E ASSINATURA DO TERMO */}
             <div className={`p-6 rounded-3xl border ${devedor?.confissao_assinada ? 'bg-violet-50/20 border-violet-100' : 'bg-slate-50/50 border-slate-100'}`}>
               <div className="flex justify-between items-start mb-4">
-                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">06. Confissão de Dívida (Termo)</span>
-                <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">Título Executivo</span>
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">06. Termo de Confissão de Dívida</span>
               </div>
               <div className="flex flex-col gap-2">
                 <button onClick={generateConfissaoPDF} disabled={statusLoadingConfissaoPDF} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 cursor-pointer">
                   {statusLoadingConfissaoPDF ? <Loader2 className="animate-spin text-violet-600" size={12} /> : <FileDown size={12} className="text-violet-600" />} 
-                  Emitir Termo com Acordo
+                  Emitir Termo de Dívida
                 </button>
                 <button onClick={() => toggleFlag('confissao_assinada', devedor?.confissao_assinada)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.confissao_assinada ? 'bg-violet-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
                   {devedor?.confissao_assinada ? 'Termo Assinado' : 'Marcar Executado'}
@@ -710,19 +706,16 @@ export default function DetalheNegociacao() {
 
               {/* ARQUITETURA DE COMPORTAMENTOS CONDICIONAIS PÓS-ACORDO */}
               <div className="mt-5 p-3.5 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] space-y-2.5">
-                <span className="block font-black text-slate-400 uppercase tracking-wider">Mapeamento Tático Pós-Acordo</span>
+                <span className="block font-black text-slate-400 uppercase tracking-wider">Ações Seguintes</span>
                 <div className="space-y-2 font-bold">
-                  <div className="flex items-start gap-1.5 text-slate-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1 shrink-0"></span>
-                    <p>1. Parou de responder / Não assinou ➔ <span className="text-red-500">Regredir p/ TRILHO A (Notificações)</span></p>
+                  <div className="items-start gap-1.5 text-slate-500">
+                    <p>➔ Não assinou (sem contrato): regredir para TRILHO A</p>
+                  </div>
+                  <div className="items-start gap-1.5 text-slate-500">
+                    <p className="text-red-500">➔ Não assinou (com contrato): avançar para TRILHO C</p>
                   </div>
                   <div className="flex items-start gap-1.5 text-slate-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1 shrink-0"></span>
-                    <p>2. Assinou e está pagando em dia ➔ <span className="text-emerald-600">Dossiê em Adimplência (Sucesso)</span></p>
-                  </div>
-                  <div className="flex items-start gap-1.5 text-slate-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1 shrink-0"></span>
-                    <p>3. Assinou e quebrou as parcelas ➔ <span className="text-amber-600">Avançar p/ TRILHO C (Fase Coercitiva)</span></p>
+                    <p className="text-red-500">➔ Assinou e não cumpriu: avançar para TRILHO C</p>
                   </div>
                 </div>
               </div>
@@ -731,9 +724,9 @@ export default function DetalheNegociacao() {
 
           {/* COLUNA C: FASE SANCIONATÓRIA (MEDIDAS COERCITIVAS E EXECUÇÃO JUDICIAL) */}
           <div className="space-y-6">
-            <div className="p-4 bg-red-600 rounded-2xl text-white">
-              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">🔴 TRILHO C: FASE SANCIONATÓRIA</h4>
-              <p className="text-[10px] text-red-100 mt-1 font-medium">Acionado por silêncio total contumaz ou quebra do Termo de Confissão assinado.</p>
+            <div className="p-4 bg-slate-900 rounded-2xl text-white">
+              <h4 className="font-black text-xs uppercase tracking-wider flex items-center gap-2">TRILHO C: FASE SANCIONATÓRIA</h4>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Acionado por silêncio total contumaz ou quebra do Termo de Confissão</p>
             </div>
 
             {/* MEDIDAS COERCITIVAS */}
@@ -741,14 +734,14 @@ export default function DetalheNegociacao() {
               <span className="block font-black text-[10px] uppercase tracking-wider text-slate-800 mb-4">07. Restrições e Medidas Coercitivas</span>
               <div className="flex flex-col gap-2">
                 <button onClick={() => setIsProtestModalOpen(true)} className={`py-3 rounded-xl border font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
-                  Protestar em Cartório (Itapema/SC)
+                  Protestar em Cartório
                 </button>
                 <button onClick={() => setIsNegativacaoModalOpen(true)} className={`py-3 rounded-xl border font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.protesto_realizado ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:border-red-200'}`}>
-                  Negativação SPC/Serasa
+                  Negativar SPC/Serasa
                 </button>
               </div>
               <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400">
-                <p className="text-slate-900">➔ Permanecendo Inerte: Escalar p/ Execução Judicial</p>
+                <p className="text-red-500">➔ Permanecendo Inerte: escalar para Execução Judicial</p>
               </div>
             </div>
 
@@ -762,9 +755,10 @@ export default function DetalheNegociacao() {
                 <p className={`text-[10px] font-black uppercase ${devedor?.judicializado ? 'text-white' : 'text-slate-900'}`}>Ajuizamento de Ação</p>
                 <p className="text-[9px] font-medium text-slate-400">Dossiê completo protocolado no Fórum da Comarca de Itapema/SC.</p>
               </div>
-              <button onClick={() => toggleFlag('judicializado', devedor?.judicializado)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.judicializado ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
-                {devedor?.judicializado ? 'Processo Ativo' : 'Iniciar Judicialização'}
+              <button onClick={() => toggleFlag('judicializado', devedor?.judicializado)} className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.judicializado ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
+                {devedor?.judicializado ? 'Judicializado' : 'Marcar Executado'}
               </button>
+                
             </div>
 
             {/* QUITAÇÃO OU EXCLUSÃO DE REGISTRO */}
