@@ -206,7 +206,8 @@ export default function NegociacoesPage() {
       rawData.forEach(item => {
         const diff = getDiffDays(item.vencimento);
         if (diff >= 60) {
-          const chave = item.cpf && item.cpf !== '' ? item.cpf : `N/A-${item.nome.replace(/\s+/g, '').toLowerCase()}`;
+          // Alterado de N/A- para NA- eliminando a barra que quebra os níveis de pasta do Next.js
+          const chave = item.cpf && item.cpf !== '' ? item.cpf : `NA-${item.nome.replace(/\s+/g, '').toLowerCase()}`;
 
           if (!aggregated[chave]) {
             aggregated[chave] = {
@@ -499,7 +500,7 @@ export default function NegociacoesPage() {
                       </td>
                       <td className="p-6 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <Link href={`/negociacoes/${item.cpf}`}>
+                          <Link href={`/negociacoes/${encodeURIComponent(item.cpf)}`}>
                               <button className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm group/btn active:scale-95 cursor-pointer">
                               Ações <ArrowUpRight size={14} className="group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
                               </button>

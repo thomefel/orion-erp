@@ -64,39 +64,98 @@ export default function DetalheNegociacao() {
   const [isContatoModalOpen, setIsContatoModalOpen] = useState(false);
   const [isRtdModalOpen, setIsRtdModalOpen] = useState(false);
 
+  // === SUBSTITUA DAS LINHAS 64 ATÉ 142 POR ESTE BLOCO CONSOLIDADO ===
+
+  // 1. Decodifica o parâmetro da URL para neutralizar codificações de barras (%2F) e acentos (%C3%AD)
+  const devedorCpfLimpo = typeof cpf === 'string' ? decodeURIComponent(cpf) : '';
+  
+  // 2. Identifica se a rota pertence a um registro artificial usando a string já decodificada
+  const isArtificial = devedorCpfLimpo.startsWith('NA-') || devedorCpfLimpo.startsWith('N/A-') || devedorCpfLimpo.toLowerCase().includes('n/a');
+
+  // Função auxiliar inteligente para direcionar as atualizações no Supabase
+  const eqIdentificador = (builder: any) => {
+    if (isArtificial && devedor) {
+      return builder.eq('nome', devedor.nome);
+    }
+    return builder.eq('cpf', devedorCpfLimpo);
+  };
+
   useEffect(() => {
     fetchDevedor();
   }, [cpf]);
 
   async function fetchDevedor() {
-    const { data } = await supabase
-      .from('devedores_historicos')
-      .select('*')
-      .eq('cpf', cpf)
-      .single();
+    try {
+      if (isArtificial) {
+        console.log(`[ORION] Chave artificial decodificada interceptada: "${devedorCpfLimpo}". Executando busca por desacentuação...`);
+        
+        // Remove os prefixos artificiais da string limpa para isolar o slug do nome do paciente
+        let nomeSlug = "";
+        if (devedorCpfLimpo.startsWith('NA-')) nomeSlug = devedorCpfLimpo.substring(3);
+        else if (devedorCpfLimpo.startsWith('N/A-')) nomeSlug = devedorCpfLimpo.substring(4);
+        else nomeSlug = devedorCpfLimpo.replace(/^N\/A-|^NA-/i, '');
 
-    if (data) {
-      setDevedor(data);
-      setValorEditavel(data.valor_total);
-      setCelularEditavel(data.celular || "");
-      setPropostaDesconto(data.proposta_desconto || 0);
-      setParcelasAcordo(data.parcelas_acordo || 1);
-      setJurosAcordo(data.juros_acordo || 0);
-      setMsgAmigavel(`Olá, ${data.nome.split(' ')[0]}. Sou do setor de conciliação da AC Odontologia. Notamos valores pendentes há mais de 60 dias. Gostaríamos de ouvir você para chegarmos a uma solução boa para ambos. Podemos conversar sobre uma condition especial hoje?`);
+        // Função sênior para remover acentos, diacríticos e espaços de forma idêntica
+        const normalizeStr = (str: string) => 
+          str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "").toLowerCase();
+
+        const targetName = normalizeStr(nomeSlug);
+
+        // Busca ampla de contingência dos registros para fazer o scan em memória
+        const { data: allRecords } = await supabase
+          .from('devedores_historicos')
+          .select('*');
+
+        if (allRecords) {
+          // Procura o match perfeito ignorando inteiramente caixa, espaços e acentuações
+          const match = allRecords.find(item => 
+            normalizeStr(item.nome) === targetName
+          );
+          
+          if (match) {
+            setDevedor(match);
+            setValorEditavel(match.valor_total);
+            setCelularEditavel(match.celular || "");
+            setPropostaDesconto(match.proposta_desconto || 0);
+            setParcelasAcordo(match.parcelas_acordo || 1);
+            setJurosAcordo(match.juros_acordo || 0);
+            setMsgAmigavel(`Olá, ${match.nome.split(' ')[0]}. Sou do setor de conciliação da AC Odontologia. Notamos valores pendentes há mais de 60 dias. Gostaríamos de ouvir você para chegarmos a uma solução boa para ambos. Podemos conversar sobre uma condição especial hoje?`);
+          } else {
+            console.warn(`[ORION] Nenhum devedor localizado com o nome normalizado: "${targetName}"`);
+          }
+        }
+      } else {
+        // Fluxo tradicional e estrito para devedores com CPF válido e numérico
+        const { data } = await supabase
+          .from('devedores_historicos')
+          .select('*')
+          .eq('cpf', devedorCpfLimpo)
+          .single();
+
+        if (data) {
+          setDevedor(data);
+          setValorEditavel(data.valor_total);
+          setCelularEditavel(data.celular || "");
+          setPropostaDesconto(data.proposta_desconto || 0);
+          setParcelasAcordo(data.parcelas_acordo || 1);
+          setJurosAcordo(data.juros_acordo || 0);
+          setMsgAmigavel(`Olá, ${data.nome.split(' ')[0]}. Sou do setor de conciliação da AC Odontologia. Notamos valores pendentes há mais de 60 dias. Gostaríamos de ouvir você para chegarmos a uma solução boa para ambos. Podemos conversar sobre uma condição especial hoje?`);
+        }
+      }
+    } catch (err) {
+      console.error("Erro crítico na hidratação do submódulo:", err);
     }
     setLoading(false);
   }
 
   const handleUpdateProposta = async () => {
-    // Atualiza estritamente os parâmetros numéricos da proposta calculada
-    const { error } = await supabase
-      .from('devedores_historicos')
-      .update({
+    const { error } = await eqIdentificador(
+      supabase.from('devedores_historicos').update({
         proposta_desconto: propostaDesconto,
         parcelas_acordo: parcelasAcordo,
         juros_acordo: jurosAcordo
       })
-      .eq('cpf', cpf);
+    );
 
     if (!error) {
       alert("Sucesso: Parâmetros da proposta salvos com sucesso no banco de dados!");
@@ -108,26 +167,26 @@ export default function DetalheNegociacao() {
   };
 
   const toggleFlag = async (field: string, currentValue: boolean) => {
-    const { error } = await supabase
-      .from('devedores_historicos')
-      .update({ [field]: !currentValue })
-      .eq('cpf', cpf);
+    const { error } = await eqIdentificador(
+      supabase.from('devedores_historicos').update({ [field]: !currentValue })
+    );
     if (!error) fetchDevedor();
   };
 
   const handleUpdateValue = async () => {
     setSaving(true);
-    await supabase.from('devedores_historicos').update({ valor_total: valorEditavel }).eq('cpf', cpf);
+    await eqIdentificador(
+      supabase.from('devedores_historicos').update({ valor_total: valorEditavel })
+    );
     setSaving(false);
     fetchDevedor();
   };
 
   const handleUpdateCelular = async () => {
     setSavingCelular(true);
-    const { error } = await supabase
-      .from('devedores_historicos')
-      .update({ celular: celularEditavel })
-      .eq('cpf', cpf);
+    const { error } = await eqIdentificador(
+      supabase.from('devedores_historicos').update({ celular: celularEditavel })
+    );
     setSavingCelular(false);
     fetchDevedor();
   };
@@ -137,10 +196,9 @@ export default function DetalheNegociacao() {
     if (!confirmDelete) return;
 
     setIsDeleting(true);
-    const { error } = await supabase
-      .from('devedores_historicos')
-      .delete()
-      .eq('cpf', cpf);
+    const { error } = await eqIdentificador(
+      supabase.from('devedores_historicos').delete()
+    );
 
     if (!error) {
       router.push('/negociacoes');
