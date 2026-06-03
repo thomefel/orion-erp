@@ -41,12 +41,18 @@ export default function FiscalPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pronto' | 'erro'>('todos');
   
+  // NOVOS ESTADOS: Filtros Avançados para a Fila RPA (Nuvem)
+  const [cloudStatusFilter, setCloudStatusFilter] = useState<string>('todos');
+  const [cloudSearchDoc, setCloudSearchDoc] = useState<string>('');
+  const [cloudMonthFilter, setCloudMonthFilter] = useState<string>('todos');
+  const [cloudYearFilter, setCloudYearFilter] = useState<string>('');
+
   const [patientsMap, setPatientsMap] = useState<Record<string, string[]>>({}); 
   const [viewMode, setViewMode] = useState<'local' | 'cloud'>('local');
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
-  // Estados para o novo Modal de Inclusão Manual Controlada
+  // Estados para o Modal de Inclusão Manual Controlada
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [manualNome, setManualNome] = useState('');
   const [manualDoc, setManualDoc] = useState('');
@@ -374,7 +380,6 @@ export default function FiscalPage() {
     } catch (err) { console.error("Erro ao carregar motor de PDF."); }
   };
 
-  // Gatilho para resetar estados e abrir o Modal estruturado de inclusão manual
   const handleAddManual = () => {
     setManualNome('');
     setManualDoc('');
@@ -383,7 +388,6 @@ export default function FiscalPage() {
     setIsManualModalOpen(true);
   };
 
-  // Confirmação e injeção do rascunho preenchido no fim do array local
   const handleConfirmManual = () => {
     if (!manualNome.trim()) {
       alert("Erro operacional: O preenchimento do nome do tomador do serviço é obrigatório.");
@@ -488,6 +492,32 @@ export default function FiscalPage() {
       return matchesSearch && matchesStatus;
     });
   }, [localData, searchTerm, statusFilter]);
+
+  // NOVA INTEGRAÇÃO: Mecanismo de Filtragem Multi-Variável Dinâmica para Fila Cloud (RPA)
+  const filteredCloudData = useMemo(() => {
+    return cloudData.filter(row => {
+      // 1. Filtro por Status
+      const matchesStatus = cloudStatusFilter === 'todos' || row.status === cloudStatusFilter;
+
+      // 2. Filtro por CPF/CNPJ (Apenas dígitos numéricos)
+      const cleanSearchDoc = cloudSearchDoc.replace(/\D/g, '');
+      const matchesDoc = !cleanSearchDoc || String(row.paciente_cpf || '').replace(/\D/g, '').includes(cleanSearchDoc);
+
+      // Extração de Mês e Ano das datas em formato ISO vindas do banco (YYYY-MM-DD)
+      const dateParts = row.data_competencia ? row.data_competencia.split('-') : [];
+      const rowYear = dateParts[0] || '';
+      const rowMonth = dateParts[1] || '';
+
+      // 3. Filtro por Mês
+      const matchesMonth = cloudMonthFilter === 'todos' || rowMonth === cloudMonthFilter;
+
+      // 4. Filtro por Ano
+      const cleanSearchYear = cloudYearFilter.replace(/\D/g, '').trim();
+      const matchesYear = !cleanSearchYear || rowYear.includes(cleanSearchYear);
+
+      return matchesStatus && matchesDoc && matchesMonth && matchesYear;
+    });
+  }, [cloudData, cloudStatusFilter, cloudSearchDoc, cloudMonthFilter, cloudYearFilter]);
 
   return (
     <div className="max-w-7xl mx-auto px-6 pt-8 pb-20 text-left">
@@ -612,45 +642,119 @@ export default function FiscalPage() {
       )}
 
       {viewMode === 'cloud' && (
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-8 text-left">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <h3 className="font-bold text-slate-900">Fila de Emissão na Nuvem</h3>
-            <button onClick={clearCloud} className="text-xs font-bold text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1 cursor-pointer"><Trash2 size={14} /> Limpar Tudo</button>
-          </div>
-          <div className="overflow-x-auto text-left">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="bg-white text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
-                  <th className="px-6 py-4 text-center">Status</th>
-                  <th className="px-6 py-4 font-bold text-left">CPF/CNPJ</th>
-                  <th className="px-6 py-4 text-left">Data</th>
-                  <th className="px-6 py-4 text-center">Valor</th>
-                  <th className="px-6 py-4 text-left">Serviço/Alíquota</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cloudData.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium">Fila vazia.</td></tr>
-                ) : cloudData.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/30">
-                    <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase ${row.status === 'pendente' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{row.status}</span></td>
-                    <td className="px-6 py-4 font-bold text-slate-700 text-left">{row.paciente_cpf}</td>
-                    <td className="px-6 py-4 text-slate-500 text-left">{fromISO(row.data_competencia)}</td>
-                    <td className="px-6 py-4 font-black text-slate-900 text-center">R$ {Number(row.valor_servico).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-xs text-slate-400 font-medium text-left">{row.codigo_servico} | {row.aliquota_simples}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-12 text-left">
-            <div className="text-right">
-              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Total de Notas</span>
-              <span className="text-2xl font-black text-slate-900">{cloudData.length}</span>
+        <div className="space-y-6 mt-8 text-left">
+          
+          {/* PAINEL TÁTICO DE FILTROS AVANÇADOS (RPA) */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end text-left">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Filtrar por Status</label>
+              <select 
+                value={cloudStatusFilter} 
+                onChange={e => setCloudStatusFilter(e.target.value)} 
+                className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent text-sm text-slate-700 cursor-pointer"
+              >
+                <option value="todos">Todos os Status</option>
+                <option value="pendente">Pendente</option>
+                <option value="concluido">Concluído</option>
+                <option value="erro">Erro</option>
+              </select>
             </div>
-            <div className="text-right">
-              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Total</span>
-              <span className="text-2xl font-black text-violet-600">R$ {cloudData.reduce((acc, row) => acc + (Number(row.valor_servico) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Filtrar por CPF/CNPJ</label>
+              <input 
+                type="text" 
+                value={cloudSearchDoc} 
+                onChange={e => setCloudSearchDoc(e.target.value.replace(/\D/g, ''))} 
+                placeholder="Apenas números do documento" 
+                className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent text-sm text-slate-700 font-mono"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Filtrar por Mês</label>
+              <select 
+                value={cloudMonthFilter} 
+                onChange={e => setCloudMonthFilter(e.target.value)} 
+                className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent text-sm text-slate-700 cursor-pointer"
+              >
+                <option value="todos">Todos os Meses</option>
+                <option value="01">Janeiro</option>
+                <option value="02">Fevereiro</option>
+                <option value="03">Março</option>
+                <option value="04">Abril</option>
+                <option value="05">Maio</option>
+                <option value="06">Junho</option>
+                <option value="07">Julho</option>
+                <option value="08">Agosto</option>
+                <option value="09">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Filtrar por Ano</label>
+              <input 
+                type="text" 
+                value={cloudYearFilter} 
+                onChange={e => setCloudYearFilter(e.target.value.replace(/\D/g, '').slice(0, 4))} 
+                placeholder="Ex: 2026" 
+                className="w-full bg-slate-50 p-3 rounded-xl font-bold outline-none border border-transparent text-sm text-slate-700 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* LISTAGEM PRINCIPAL DA FILA RPA NA NUVEM */}
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="font-bold text-slate-900">Fila de Emissão na Nuvem</h3>
+              <button onClick={clearCloud} className="text-xs font-bold text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1 cursor-pointer"><Trash2 size={14} /> Limpar Tudo</button>
+            </div>
+            <div className="overflow-x-auto text-left">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="bg-white text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 font-bold text-left">CPF/CNPJ</th>
+                    <th className="px-6 py-4 text-left">Data</th>
+                    <th className="px-6 py-4 text-center">Valor</th>
+                    <th className="px-6 py-4 text-left">Serviço/Alíquota</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCloudData.length === 0 ? (
+                    <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium">Nenhum registro localizado para os filtros informados.</td></tr>
+                  ) : filteredCloudData.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/30">
+                      <td className="px-6 py-4 text-center">
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase ${row.status === 'pendente' ? 'bg-amber-100 text-amber-700' : row.status === 'concluido' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-700 text-left">{row.paciente_cpf}</td>
+                      <td className="px-6 py-4 text-slate-500 text-left">{fromISO(row.data_competencia)}</td>
+                      <td className="px-6 py-4 font-black text-slate-900 text-center">R$ {Number(row.valor_servico).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-xs text-slate-400 font-medium text-left">{row.codigo_servico} | {row.aliquota_simples}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* COMPILAÇÃO ANALÍTICA DINÂMICA (RODAPÉ ATUALIZADO BASEADO NOS FILTROS EXPOSTOS) */}
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-12 text-left">
+              <div className="text-right">
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Total de Notas Filtradas</span>
+                <span className="text-2xl font-black text-slate-900">{filteredCloudData.length}</span>
+              </div>
+              <div className="text-right">
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Filtrado</span>
+                <span className="text-2xl font-black text-violet-600">
+                  R$ {filteredCloudData.reduce((acc, row) => acc + (Number(row.valor_servico) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
           </div>
         </div>
