@@ -526,7 +526,7 @@ export default function FiscalPage() {
           <h1 className="text-4xl font-black text-slate-900 italic uppercase">
             Orion <span className="text-violet-600 not-italic">Fiscal</span>
           </h1>
-          <p className="text-slate-500 font-medium mt-1">Extração de Extratos e Gestão de Notas • AC Odontologia</p>
+          <p className="text-slate-500 font-medium mt-1">Gestão de Notas Emitidas e a Emitir • AC Odontologia</p>
         </div>
         <div className="flex bg-slate-200 p-1 rounded-xl">
           <button onClick={() => setViewMode('local')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cursor-pointer ${viewMode === 'local' ? 'bg-white shadow text-violet-600' : 'text-slate-50'}`}>Preparação</button>

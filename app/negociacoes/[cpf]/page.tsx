@@ -633,14 +633,14 @@ export default function DetalheNegociacao() {
               </div>
               <div className="mt-4 pt-3 border-t border-dashed border-slate-200 text-[10px] font-bold text-slate-400 space-y-1">
                 <p className="text-blue-600">➔ Se Respondeu: avançar para TRILHO B</p>
-                <p className="text-slate-500">➔ Se Ignorou: prosseguir para Notificação via Cartório RTD</p>
+                <p className="text-slate-500">➔ Se Ignorou: prosseguir para Notificação via Correios com A.R.</p>
               </div>
             </div>
 
             {/* NOTIFICAÇÃO EXTRAJUDICIAL VIA CARTÓRIO RTD (TODOS OS 6 CAMPOS INTEGRAIS) */}
             <div className={`p-6 rounded-3xl border ${devedor?.notificacao_rtd ? 'bg-orange-50/10 border-orange-100' : 'bg-slate-50/50 border-slate-100'}`}>
               <div className="flex justify-between items-start mb-4">
-                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">03. Notificação via Cartório RTD</span>
+                <span className="font-black text-[10px] uppercase tracking-wider text-slate-800">03. Notificação via Correios com A.R.</span>
                 <span className="text-[9px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">D+90 a D+100</span>
               </div>
               
@@ -675,11 +675,11 @@ export default function DetalheNegociacao() {
               <div className="flex flex-col gap-2">
                 <button onClick={generateRtdPDF} disabled={statusLoadingRtdPDF} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all text-slate-600 cursor-pointer">
                   {statusLoadingRtdPDF ? <Loader2 className="animate-spin text-orange-600" size={12} /> : <FileDown size={12} className="text-orange-600" />} 
-                  Emitir PDF Notificação RTD
+                  Emitir PDF Notificação
                 </button>
-                <button onClick={() => setIsRtdModalOpen(true)} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-500 cursor-pointer">
+                {/* <button onClick={() => setIsRtdModalOpen(true)} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-500 cursor-pointer">
                   <BookOpen size={12} className="text-slate-400" /> Manual Notificação RTD
-                </button>
+                </button> */}
                 <button onClick={() => toggleFlag('notificacao_rtd', devedor?.notificacao_rtd)} className={`w-full py-2.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${devedor?.notificacao_rtd ? 'bg-orange-600 text-white' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-100'}`}>
                   {devedor?.notificacao_rtd ? 'Protocolado' : 'Marcar Executado'}
                 </button>
