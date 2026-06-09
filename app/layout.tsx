@@ -1,7 +1,7 @@
 // app/layout.tsx
 import './globals.css';
 import Link from 'next/link';
-import { LayoutDashboard, Receipt, Send, FileText, History, Menu, ChevronDown, Wrench } from 'lucide-react';
+import { LayoutDashboard, Receipt, Send, FileText, History, Menu, ChevronDown, Wrench, Bot } from 'lucide-react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
 
                 <Link href="/supervisor" className="flex items-center gap-4 px-6 py-4 text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 transition-colors">
-                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><LayoutDashboard size={18} /></div>
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Bot size={18} /></div>
                   Supervisor IA
                 </Link>
               </div>
