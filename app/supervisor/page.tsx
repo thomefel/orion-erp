@@ -97,6 +97,8 @@ export default function SupervisorPage() {
         status_bot: config.status_bot,
         horario_inicio_rpa: config.horario_inicio_rpa,
         horario_fim_rpa: config.horario_fim_rpa,
+        horario_inicio_almoco: config.horario_inicio_almoco,
+        horario_fim_almoco: config.horario_fim_almoco,
         prompt_sistema: config.prompt_sistema,
         updated_at: new Date().toISOString()
       })
@@ -167,13 +169,14 @@ export default function SupervisorPage() {
             <Bot size={14} className="text-blue-600" /> Parâmetros de Automação do Robô Noturno
           </h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start mb-8 text-left">
+          {/* GRID REARQUITETADO COM CONTROLE DE CONTINGÊNCIA E INTERVALO DE ALMOÇO */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-start mb-8 text-left">
             {/* Toggle de Ativação Master */}
             <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between h-28 text-left">
               <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Status Geral do Robô</span>
               <div className="flex items-center justify-between mt-2">
                 <span className={`text-sm font-black uppercase ${config.status_bot ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {config.status_bot ? 'Ativo em Plantão' : 'Desativado Manual'}
+                  {config.status_bot ? 'Ativo' : 'Desativado'}
                 </span>
                 <button 
                   onClick={() => setConfig({ ...config, status_bot: !config.status_bot })}
@@ -186,7 +189,7 @@ export default function SupervisorPage() {
 
             {/* Input de Horário Inicial */}
             <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between h-28 text-left">
-              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left flex items-center gap-1"><Clock size={12} /> Início da Contingência</span>
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left flex items-center gap-1"><Clock size={12} /> Início Plantão</span>
               <input 
                 type="time" 
                 value={config.horario_inicio_rpa?.substring(0, 5) || ''}
@@ -197,11 +200,33 @@ export default function SupervisorPage() {
 
             {/* Input de Horário Final */}
             <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between h-28 text-left">
-              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left flex items-center gap-1"><Clock size={12} /> Fim da Contingência</span>
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left flex items-center gap-1"><Clock size={12} /> Fim Plantão</span>
               <input 
                 type="time" 
                 value={config.horario_fim_rpa?.substring(0, 5) || ''}
                 onChange={(e) => setConfig({ ...config, horario_fim_rpa: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded-xl p-2 mt-2 font-bold text-slate-700 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            {/* Input de Início do Almoço (NOVO) */}
+            <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between h-28 text-left">
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left flex items-center gap-1"><Clock size={12} /> Início Almoço</span>
+              <input 
+                type="time" 
+                value={config.horario_inicio_almoco?.substring(0, 5) || ''}
+                onChange={(e) => setConfig({ ...config, horario_inicio_almoco: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded-xl p-2 mt-2 font-bold text-slate-700 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            {/* Input de Fim do Almoço (NOVO) */}
+            <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between h-28 text-left">
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left flex items-center gap-1"><Clock size={12} /> Fim Almoço</span>
+              <input 
+                type="time" 
+                value={config.horario_fim_almoco?.substring(0, 5) || ''}
+                onChange={(e) => setConfig({ ...config, horario_fim_almoco: e.target.value })}
                 className="w-full bg-white border border-slate-200 rounded-xl p-2 mt-2 font-bold text-slate-700 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>

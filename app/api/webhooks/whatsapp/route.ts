@@ -8,20 +8,34 @@ const EVO_INSTANCE = process.env.NEXT_PUBLIC_EVOLUTION_INSTANCE || '';
 const EVO_TOKEN = process.env.NEXT_PUBLIC_EVOLUTION_TOKEN || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
-function isOutsideBusinessHours(inicio: string, fim: string): boolean {
-  // Força a criação da data capturando e convertendo o fuso de forma estrita para Brasília
+function isOutsideBusinessHours(inicio: string, fim: string, inicioAlmoco?: string | null, fimAlmoco?: string | null): boolean {
+  // 1. Força a criação da data capturando e convertendo o fuso de forma estrita para Brasília
   const dataBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   
+  // 2. Extrai o dia da semana correto de Brasília (0 = Domingo, 6 = Sábado)
   const diaSemana = dataBrasilia.getDay(); 
 
   // Finais de semana (Sábado = 6, Domingo = 0) o robô atende direto
   if (diaSemana === 0 || diaSemana === 6) return true;
 
+  // Extrai as horas e minutos do momento atual
+  const minutosAgora = dataBrasilia.getHours() * 60 + dataBrasilia.getMinutes();
+
+  // 3. Verificação de Almoço: Se o tempo atual estiver dentro da janela configurada, o robô assume imediatamente
+  if (inicioAlmoco && fimAlmoco) {
+    const [hAlmocoIn, mAlmocoIn] = inicioAlmoco.split(':').map(Number);
+    const [hAlmocoFim, mAlmocoFim] = fimAlmoco.split(':').map(Number);
+    const minutosInicioAlmoco = hAlmocoIn * 60 + mAlmocoIn;
+    const minutosFimAlmoco = hAlmocoFim * 60 + mAlmocoFim;
+
+    if (minutosAgora >= minutosInicioAlmoco && minutosAgora <= minutosFimAlmoco) {
+      return true; // Está no intervalo de almoço, ativa o robô
+    }
+  }
+
+  // 4. Verificação padrão do encerramento do expediente comercial noturno/madrugada
   const [hInicio, mInicio] = inicio.split(':').map(Number);
   const [hFim, mFim] = fim.split(':').map(Number);
-
-  // Extrai horas e minutos já convertidos e higienizados do fuso brasileiro
-  const minutosAgora = dataBrasilia.getHours() * 60 + dataBrasilia.getMinutes();
   const minutosInicio = hInicio * 60 + mInicio;
   const minutosFim = hFim * 60 + mFim;
 
@@ -87,7 +101,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'bot_disabled_in_database' });
     }
 
-    const foraDoExpediente = isOutsideBusinessHours(config.horario_inicio_rpa, config.horario_fim_rpa);
+    const foraDoExpediente = isOutsideBusinessHours(
+      config.horario_inicio_rpa, 
+      config.horario_fim_rpa,
+      config.horario_inicio_almoco,
+      config.horario_fim_almoco
+    );
+    
     console.log(`[ORION TELEMETRIA] [${requestId}] Horário verificado. Fora do expediente comercial? ${foraDoExpediente}`);
     
     if (!foraDoExpediente) {
