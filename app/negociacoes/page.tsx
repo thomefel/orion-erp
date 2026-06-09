@@ -23,14 +23,26 @@ import {
 
 export default function NegociacoesPage() {
   const [rawData, setRawData] = useState<any[]>([]);
-  const [patientsData, setPatientsData] = useState<Record<string, string>>({}); // Mapa de contatos
-  const [consolidatedData, setConsolidatedData] = useState<any[]>([]);
+  const [patientsData, setPatientsData] = useState<Record<string, string>>({}); 
+  const [consolidatedData, setConsolidatedData] = useState<any[]>([]); // Pré-visualização do novo lote carregado
+  const [cloudData, setCloudData] = useState<any[]>([]); // Lista oficial vinda da nuvem
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isClearing, setIsClearing] = useState(false); // Estado de processamento de limpeza em massa
+  const [isClearing, setIsClearing] = useState(false); 
   const [status, setStatus] = useState('Aguardando arquivos para iniciar a consolidação...');
   const [isImportExpanded, setIsImportExpanded] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<'nome' | 'diasAtraso' | 'valorTotal' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: 'nome' | 'diasAtraso' | 'valorTotal') => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc'); // Inicia em ordem decrescente por padrão para destacar o maior passivo/atraso
+    }
+  };
 
   const [fileStates, setFileStates] = useState({
     finance: { loaded: false, name: '' },
@@ -41,6 +53,7 @@ export default function NegociacoesPage() {
     fetchFromSupabase();
   }, []);
 
+  // Busca e alimenta exclusivamente a lista oficial de tratamento ativa na nuvem
   async function fetchFromSupabase() {
     setIsProcessing(true);
     setStatus('Buscando registros salvos na nuvem...');
@@ -67,21 +80,22 @@ export default function NegociacoesPage() {
           parcelasQtd: item.parcelas_qtd,
           fase_atual: item.fase_atual,
           celular: item.celular,
-          contato_desatualizado: item.contato_desatualizado, // Coluna acoplada para monitoramento de higienização
+          contato_desatualizado: item.contato_desatualizado, 
           notificacao_amigavel: item.notificacao_amigavel,
           proposta_enviada: item.proposta_enviada,
           notificacao_extrajudicial: item.notificacao_extrajudicial,
-          notificacao_rtd: item.notificacao_rtd, // Acoplamento dinâmico para controle de notificação cartorária
+          notificacao_rtd: item.notificacao_rtd, 
           acordo_firmado: item.acordo_firmado,
           confissao_assinada: item.confissao_assinada,
           protesto_realizado: item.protesto_realizado,
           judicializado: item.judicializado
         };
       });
-      setConsolidatedData(formatado);
-      setStatus(`${data.length} devedores carregados da nuvem.`);
+      setCloudData(formatado); // Alimenta a grid de visualização principal
+      setStatus(`${data.length} devedores ativos carregados da nuvem.`);
       setIsImportExpanded(false);
     } else {
+      setCloudData([]);
       setStatus('Nenhum registro encontrado na nuvem. Inicie uma nova importação.');
     }
     setIsProcessing(false);
@@ -115,14 +129,34 @@ export default function NegociacoesPage() {
       .toUpperCase();
   };
 
-  const filteredData = useMemo(() => {
+  // O Filtro de busca e ordenação em tempo real sobre a fila ativa da nuvem
+  const filteredCloudData = useMemo(() => {
     const term = normalizeText(searchTerm);
-    return consolidatedData.filter(item => {
+    const filtered = cloudData.filter(item => {
       return !term || 
         normalizeText(item.nome).includes(term) || 
         item.cpf.toUpperCase().includes(term);
     });
-  }, [consolidatedData, searchTerm]);
+
+    if (!sortField) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+
+      // Ordenação para strings (Nome)
+      if (typeof aVal === 'string') {
+        return sortDirection === 'asc' 
+          ? aVal.localeCompare(bVal, 'pt-BR') 
+          : bVal.localeCompare(aVal, 'pt-BR');
+      }
+
+      // Ordenação para números (diasAtraso e valorTotal)
+      return sortDirection === 'asc' 
+        ? (aVal || 0) - (bVal || 0) 
+        : (bVal || 0) - (aVal || 0);
+    });
+  }, [cloudData, searchTerm, sortField, sortDirection]);
 
   const parseBrazilianDate = (dateStr: string) => {
     if (!dateStr || typeof dateStr !== 'string') return null;
@@ -244,17 +278,53 @@ export default function NegociacoesPage() {
   const saveToSupabase = async () => {
     if (consolidatedData.length === 0) return;
     setIsSyncing(true);
-    setStatus('Sincronizando dados com Orion Cloud...');
+    setStatus('Sincronizando dados de forma incremental com Orion Cloud...');
 
     try {
-      const payload = consolidatedData.map(item => ({
-        cpf: item.cpf, 
-        nome: item.nome,
-        data_divida: formatToISODate(item.vencimentoMaisAntigo),
-        parcelas_qtd: item.parcelasQtd,
-        valor_total: item.valorTotal,
-        celular: item.celular || null
-      }));
+      // 1. Busca os dados atuais da nuvem em tempo de execução para fazer o cruzamento protetor
+      const { data: cloudRecords, error: fetchError } = await supabase
+        .from('devedores_historicos')
+        .select('*');
+
+      if (fetchError) throw fetchError;
+
+      const cloudMap = new Map(cloudRecords?.map(item => [item.cpf, item]) || []);
+
+      // 2. Monta o payload fundindo as tabelas locais e remotas sem perder histórico tático
+      const payload = consolidatedData.map(item => {
+        const existing = cloudMap.get(item.cpf);
+
+        if (existing) {
+          return {
+            cpf: item.cpf, 
+            nome: item.nome,
+            data_divida: item.valorTotal > existing.valor_total ? formatToISODate(item.vencimentoMaisAntigo) : existing.data_divida,
+            parcelas_qtd: item.valorTotal > existing.valor_total ? item.parcelasQtd : existing.parcelas_qtd,
+            valor_total: Math.max(existing.valor_total, item.valorTotal), // Evita diminuir o passivo atual
+            celular: item.celular || existing.celular,
+            // PRESERVAÇÃO CRÍTICA DO PROCESSO DE NEGOCIAÇÃO VIGENTE:
+            notificacao_amigavel: existing.notificacao_amigavel,
+            proposta_enviada: existing.proposta_enviada,
+            notificacao_extrajudicial: existing.notificacao_extrajudicial,
+            notificacao_rtd: existing.notificacao_rtd,
+            acordo_firmado: existing.acordo_firmado,
+            confissao_assinada: existing.confissao_assinada,
+            protesto_realizado: existing.protesto_realizado,
+            judicializado: existing.judicializado,
+            contato_desatualizado: existing.contato_desatualizado
+          };
+        } else {
+          // REGISTRO INÉDITO: entra limpo com os dados novos compilados do Excel
+          return {
+            cpf: item.cpf, 
+            nome: item.nome,
+            data_divida: formatToISODate(item.vencimentoMaisAntigo),
+            parcelas_qtd: item.parcelasQtd,
+            valor_total: item.valorTotal,
+            celular: item.celular || null
+          };
+        }
+      });
 
       const { error } = await supabase
         .from('devedores_historicos')
@@ -262,8 +332,10 @@ export default function NegociacoesPage() {
 
       if (error) throw error;
 
-      setStatus('SUCESSO: Base histórica e canais de contato protegidos com RLS.');
+      setStatus('SUCESSO: Base histórica atualizada incrementalmente sem corromper as negociações ativas.');
+      setConsolidatedData([]); // Limpa a pré-visualização do lote local após salvar com sucesso
       setIsImportExpanded(false);
+      fetchFromSupabase(); // Força a atualização da listagem principal com o saldo novo
     } catch (err: any) {
       console.error("Erro Supabase:", err);
       setStatus(`Erro na sincronização: ${err.message || 'Falha na conexão com banco'}`);
@@ -272,7 +344,16 @@ export default function NegociacoesPage() {
     }
   };
 
-  // --- MOTOR TÁTICO DE EXPURGO DA BASE HISTÓRICA DE TESTE ---
+  const handleCancelImport = () => {
+    setConsolidatedData([]);
+    setRawData([]);
+    setFileStates({
+      finance: { loaded: false, name: '' },
+      patients: { loaded: false, name: '' }
+    });
+    setStatus('Inclusão cancelada. Aguardando novos arquivos para processamento.');
+  };
+
   const handleClearDatabase = async () => {
     const confirmClear = confirm("ATENÇÃO MÁXIMA: Deseja apagar TODOS os registros históricos de negociação da nuvem? Esta ação é imediata, irreversível e limpará completamente o painel.");
     if (!confirmClear) return;
@@ -288,6 +369,7 @@ export default function NegociacoesPage() {
       if (error) throw error;
 
       setStatus('SUCESSO: Base histórica remota limpa com sucesso.');
+      setCloudData([]);
       setConsolidatedData([]);
       setRawData([]);
       setFileStates({
@@ -302,7 +384,6 @@ export default function NegociacoesPage() {
     }
   };
 
-  // --- MOTOR EXCLUSIVO PARA HIGIENIZAÇÃO INDIVIDUAL ITEM A ITEM ---
   const handleDeleteSingle = async (cpf: string) => {
     const confirmDelete = confirm("Deseja realmente remover permanentemente este devedor da nuvem?");
     if (!confirmDelete) return;
@@ -315,7 +396,7 @@ export default function NegociacoesPage() {
 
       if (error) throw error;
 
-      setConsolidatedData(prev => prev.filter(item => item.cpf !== cpf));
+      setCloudData(prev => prev.filter(item => item.cpf !== cpf));
       setStatus('Registro individual higienizado com sucesso.');
     } catch (err: any) {
       console.error(err);
@@ -349,65 +430,124 @@ export default function NegociacoesPage() {
         </div>
 
         {isImportExpanded && (
-          <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-top-4 duration-300">
-            <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className={`relative group transition-all duration-300 bg-white p-6 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200 hover:border-blue-400'}`}>
-                <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-2xl ${fileStates.finance.loaded ? 'bg-blue-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
-                    <Database size={24} />
+          <div className="p-8 border-t border-slate-100 bg-slate-50/30 animate-in slide-in-from-top-4 duration-300 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+              <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className={`relative group transition-all duration-300 bg-white p-6 rounded-3xl border-2 border-dashed ${fileStates.finance.loaded ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200 hover:border-blue-400'}`}>
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl ${fileStates.finance.loaded ? 'bg-blue-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                      <Database size={24} />
+                    </div>
+                    <div className="flex-1 text-left truncate">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Base Financeira Histórica</label>
+                      <p className="text-[11px] text-slate-400 truncate">{fileStates.finance.name || 'Selecionar planilha de débitos'}</p>
+                      <input type="file" accept=".xlsx" onChange={handleFileLoad} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    </div>
                   </div>
-                  <div className="flex-1 text-left truncate">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Base Financeira Histórica</label>
-                    <p className="text-[11px] text-slate-400 truncate">{fileStates.finance.name || 'Selecionar planilha de débitos'}</p>
-                    <input type="file" accept=".xlsx" onChange={handleFileLoad} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                </div>
+
+                <div className={`relative group transition-all duration-300 bg-white p-6 rounded-3xl border-2 border-dashed ${fileStates.patients.loaded ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200 hover:border-emerald-400'}`}>
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                      <Users size={24} />
+                    </div>
+                    <div className="flex-1 text-left truncate">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Lista de Pacientes (Contatos)</label>
+                      <p className="text-[11px] text-slate-400 truncate">{fileStates.patients.name || 'Selecionar planilha de contatos'}</p>
+                      <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className={`relative group transition-all duration-300 bg-white p-6 rounded-3xl border-2 border-dashed ${fileStates.patients.loaded ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200 hover:border-emerald-400'}`}>
-                <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-2xl ${fileStates.patients.loaded ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
-                    <Users size={24} />
-                  </div>
-                  <div className="flex-1 text-left truncate">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Lista de Pacientes (Contatos)</label>
-                    <p className="text-[11px] text-slate-400 truncate">{fileStates.patients.name || 'Selecionar planilha de contatos'}</p>
-                    <input type="file" accept=".xlsx" onChange={handlePatientsUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                  </div>
+              <div className="flex flex-col gap-3 text-left h-full justify-between">
+                <button 
+                  onClick={handleConsolidate}
+                  disabled={!fileStates.finance.loaded || !fileStates.patients.loaded || isProcessing}
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
+                >
+                  {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <FileSearch size={18} />}
+                  Iniciar Agregação de Dados
+                </button>
+                
+                <div className="flex gap-3 w-full">
+                  <button 
+                    onClick={saveToSupabase}
+                    disabled={consolidatedData.length === 0 || isSyncing}
+                    className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
+                  >
+                    {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <CloudUpload size={18} />}
+                    Injetar Atualizações na Nuvem
+                  </button>
+
+                  <button 
+                    onClick={handleClearDatabase}
+                    disabled={isClearing}
+                    className="bg-red-600 text-white px-5 rounded-2xl font-black flex items-center justify-center hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
+                    title="Limpar toda a base histórica remota"
+                  >
+                    {isClearing ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 text-left">
-              <button 
-                onClick={handleConsolidate}
-                disabled={!fileStates.finance.loaded || !fileStates.patients.loaded || isProcessing}
-                className="flex-1 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
-              >
-                {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <FileSearch size={18} />}
-                Iniciar Agregação
-              </button>
-              
-              <div className="flex-1 flex gap-3 w-full">
-                <button 
-                  onClick={saveToSupabase}
-                  disabled={consolidatedData.length === 0 || isSyncing}
-                  className="flex-1 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
-                >
-                  {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <CloudUpload size={18} />}
-                  Salvar na Nuvem
-                </button>
+            {/* SEÇÃO REARQUITETADA: CARD DE PRÉ-VISUALIZAÇÃO COM BOTÃO DE CANCELAR E LISTAGEM DE REGISTROS */}
+            {consolidatedData.length > 0 && (
+              <div className="p-6 bg-blue-50/40 rounded-3xl border border-blue-100/60 text-left animate-in fade-in zoom-in-95 duration-300 space-y-5">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="block font-black text-[10px] uppercase tracking-wider text-blue-700">📊 Lote Incremental Preparado para Fusão</span>
+                  <div className="flex items-center gap-3">
+                    <span className="px-2.5 py-0.5 bg-blue-600 text-white rounded-full text-[9px] font-black uppercase">{consolidatedData.length} Contratos</span>
+                    <button 
+                      onClick={handleCancelImport}
+                      className="px-3 py-1 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-sm"
+                    >
+                      Cancelar Inclusão
+                    </button>
+                  </div>
+                </div>
+                
+                <p className="text-xs text-slate-500 font-medium max-w-3xl">
+                  Esses dados foram cruzados localmente em memória. Clique no botão <span className="text-blue-600 font-bold">"Injetar Atualizações na Nuvem"</span> acima para fundi-los. Devedores existentes terão o passivo incrementado sem perda de histórico; novos devedores serão inseridos.
+                </p>
+                
+                <div className="mt-4 flex gap-8 text-left">
+                  <div>
+                    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Montante do Lote</span>
+                    <span className="text-xl font-black text-slate-800">R$ {consolidatedData.reduce((acc, item) => acc + (Number(item.valorTotal) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
 
-                <button 
-                  onClick={handleClearDatabase}
-                  disabled={isClearing}
-                  className="bg-red-600 text-white px-5 rounded-2xl font-black flex items-center justify-center hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all shadow-xl active:scale-95 cursor-pointer"
-                  title="Limpar toda a base histórica remota"
-                >
-                  {isClearing ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-                </button>
+                {/* NOVO SUBMÓDULO DE INSPEÇÃO DE DADOS PRÉVIOS (DETALHAMENTO DO LOTE) */}
+                <div className="mt-4 border-t border-blue-100/40 pt-4">
+                  <span className="block font-black text-[9px] uppercase tracking-wider text-slate-400 mb-3">Registros Mapeados na Planilha (Prévia do Upsert)</span>
+                  <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-inner">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-black uppercase text-[9px] tracking-wider sticky top-0">
+                          <th className="p-3">Paciente</th>
+                          <th className="p-3 text-center">CPF / Chave</th>
+                          <th className="p-3 text-center">Parcelas</th>
+                          <th className="p-3 text-right">Valor Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50 font-medium text-slate-600">
+                        {consolidatedData.map((item, idx) => (
+                          <tr key={item.cpf || idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3 font-bold text-slate-800 uppercase max-w-[200px] truncate">{item.nome}</td>
+                            <td className="p-3 text-center font-mono text-slate-400">{item.cpf}</td>
+                            <td className="p-3 text-center text-blue-600 font-bold">{item.parcelasQtd}x</td>
+                            <td className="p-3 text-right font-bold text-slate-700">R$ {item.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
               </div>
-            </div>
+            )}
           </div>
         )}
       </section>
@@ -417,19 +557,20 @@ export default function NegociacoesPage() {
         <p className="text-sm font-bold text-slate-600 text-left">{status}</p>
       </div>
 
+      {/* SEÇÃO PRINCIPAL DA FILA ATIVA: EXIBE EXCLUSIVAMENTE OS DADOS TRATADOS NA NUVEM */}
       <div className="bg-white rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden min-h-[400px] text-left">
-        {isProcessing && consolidatedData.length === 0 ? (
+        {isProcessing && cloudData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-40 gap-4">
              <div className="relative">
                 <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
                 <History className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-600" size={24} />
              </div>
-             <p className="font-black text-slate-400 uppercase text-[10px] tracking-[0.3em] animate-pulse">Processando dados históricos...</p>
+             <p className="font-black text-slate-400 uppercase text-[10px] tracking-[0.3em] animate-pulse">Sincronizando fila Orion Cloud...</p>
           </div>
-        ) : consolidatedData.length === 0 ? (
+        ) : cloudData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-40 text-slate-300 text-left">
              <TrendingDown size={64} className="mb-4 opacity-10" />
-             <p className="font-bold uppercase tracking-widest text-xs text-left">Aguardando definição da base de devedores</p>
+             <p className="font-bold uppercase tracking-widest text-xs text-left">Nenhum devedor ativo em tratamento na nuvem. Use o painel acima para importar.</p>
           </div>
         ) : (
           <>
@@ -439,12 +580,24 @@ export default function NegociacoesPage() {
                   <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-400">
                     <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left min-w-[300px]">
                       <div className="flex flex-col gap-2 text-left">
-                        <span>Paciente / Ranking de Volume</span>
+                        {/* TÍTULO CLICÁVEL COM SETA DINÂMICA: NOME */}
+                        <div 
+                          onClick={() => handleSort('nome')} 
+                          className="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors select-none w-fit"
+                        >
+                          <span>Paciente em Tratamento Operacional</span>
+                          {sortField === 'nome' ? (
+                            sortDirection === 'asc' ? <ChevronUp size={13} className="text-blue-600 font-black" /> : <ChevronDown size={13} className="text-blue-600 font-black" />
+                          ) : (
+                            <ChevronDown size={13} className="text-slate-300 opacity-40 group-hover:opacity-100" />
+                          )}
+                        </div>
+                        
                         <div className="relative text-left">
                           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input 
                             type="text" 
-                            placeholder="Filtrar por nome ou CPF..." 
+                            placeholder="Filtrar por nome ou CPF da fila..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
@@ -452,13 +605,42 @@ export default function NegociacoesPage() {
                         </div>
                       </div>
                     </th>
-                    <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Idade da Dívida</th>
-                    <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">Passivo Acumulado</th>
+                    
+                    {/* TÍTULO CLICÁVEL COM SETA DINÂMICA: IDADE DA DÍVIDA */}
+                    <th className="p-6 text-[11px] font-black uppercase tracking-wider">
+                      <div 
+                        onClick={() => handleSort('diasAtraso')} 
+                        className="flex items-center justify-center gap-1 cursor-pointer hover:text-blue-600 transition-colors select-none mx-auto w-fit"
+                      >
+                        <span>Idade da Dívida</span>
+                        {sortField === 'diasAtraso' ? (
+                          sortDirection === 'asc' ? <ChevronUp size={13} className="text-blue-600 font-black" /> : <ChevronDown size={13} className="text-blue-600 font-black" />
+                        ) : (
+                          <ChevronDown size={13} className="text-slate-300 opacity-40" />
+                        )}
+                      </div>
+                    </th>
+                    
+                    {/* TÍTULO CLICÁVEL COM SETA DINÂMICA: PASSIVO ACUMULADO */}
+                    <th className="p-6 text-[11px] font-black uppercase tracking-wider text-left">
+                      <div 
+                        onClick={() => handleSort('valorTotal')} 
+                        className="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors select-none w-fit"
+                      >
+                        <span>Passivo Acumulado</span>
+                        {sortField === 'valorTotal' ? (
+                          sortDirection === 'asc' ? <ChevronUp size={13} className="text-blue-600 font-black" /> : <ChevronDown size={13} className="text-blue-600 font-black" />
+                        ) : (
+                          <ChevronDown size={13} className="text-slate-300 opacity-40" />
+                        )}
+                      </div>
+                    </th>
+                    
                     <th className="p-6 text-[11px] font-black uppercase tracking-wider text-center">Gestão</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 text-left">
-                  {filteredData.map((item, idx) => (
+                  {filteredCloudData.map((item, idx) => (
                     <tr key={item.cpf || `nome-${idx}`} className="group hover:bg-blue-50/30 transition-colors text-left">
                       <td className="p-6 text-left">
                         <div className="flex items-center gap-4 text-left">
@@ -477,7 +659,6 @@ export default function NegociacoesPage() {
                                   );
                                 })()}
                                 
-                                {/* Badge tático adicional para sinalizar interrupção de canal por contato inválido */}
                                 {item.contato_desatualizado && (
                                   <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase border tracking-wider bg-orange-50 text-orange-700 border-orange-200 animate-pulse">
                                     Sem Contato
@@ -522,13 +703,13 @@ export default function NegociacoesPage() {
             
             <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-12 text-left">
               <div className="text-right">
-                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total de Devedores</span>
-                <span className="text-2xl font-black text-slate-900 text-right">{filteredData.length}</span>
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total de Devedores na Nuvem</span>
+                <span className="text-2xl font-black text-slate-900 text-right">{filteredCloudData.length}</span>
               </div>
               <div className="text-right">
-                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Montante Recuperável</span>
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Montante Sob Tratamento</span>
                 <span className="text-2xl font-black text-blue-600 text-right">
-                  R$ {filteredData.reduce((acc, item) => acc + (Number(item.valorTotal) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  R$ {filteredCloudData.reduce((acc, item) => acc + (Number(item.valorTotal) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
