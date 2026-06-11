@@ -13,7 +13,7 @@ export async function middleware(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     console.warn(`[ORION ADVERTÊNCIA] Variáveis do Supabase ausentes no Middleware Edge Runtime. URL: ${!!supabaseUrl}, Key: ${!!supabaseAnonKey}`);
     
-    // Se estiver na tela de login, deixa passar para não congelar a UI, permitindo o client component tentar autenticar
+    // Se estiver na tela de login, deixa passar para não congelar a UI
     if (req.nextUrl.pathname.startsWith('/login')) {
       return res;
     }
@@ -28,8 +28,11 @@ export async function middleware(req: NextRequest) {
         getAll() {
           return req.cookies.getAll().map(({ name, value }) => ({ name, value }));
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
+        // CORREÇÃO VISUAL SÊNIOR: Adicionada a tipagem explícita do array estrutural de cookies
+        setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            req.cookies.set({ name, value, ...options });
+          });
         },
       },
     }
