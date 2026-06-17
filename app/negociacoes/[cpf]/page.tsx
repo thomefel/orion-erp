@@ -51,7 +51,7 @@ export default function DetalheNegociacao() {
   const [rtdDescricaoDebito, setRtdDescricaoDebito] = useState("Parcelas em aberto de tratamento clínico executado");
   const [rtdPrazoDias, setRtdPrazoDias] = useState("5 (cinco) dias úteis");
   const [rtdChavePix, setRtdChavePix] = useState("acodontologia.itapema@gmail.com");
-  const [rtdDadosBanco, setRtdDadosBanco] = useState("Banco Inter - Agência 0001 - C/C 123456-7");
+  const [rtdDadosBanco, setRtdDadosBanco] = useState("Banco Inter - 007 - Agência 0001 - C/C 7447094-9");
   const [rtdResponsavelNome, setRtdResponsavelNome] = useState("AC ODONTOLOGIA");
   const [rtdResponsavelCargo, setRtdResponsavelCargo] = useState("Departamento de Recuperação de Ativos");
 
@@ -354,7 +354,7 @@ export default function DetalheNegociacao() {
       doc.text("NOTIFICANTE:", 20, 40);
       doc.setFont("helvetica", "normal");
       doc.text(`${rtdResponsavelNome} | CNPJ nº 12.345.678/0001-99`, 52, 40);
-      doc.text("Av. Nereu Ramos, Meia Praia, Itapema/SC | E-mail: financeiro@acodontologia.com.br", 52, 45);
+      doc.text("Rua 412A, número 490, sala 03, Morretes, Itapema/SC | E-mail: acodontologia.itapema@gmail.com.br", 52, 45);
       
       doc.setFont("helvetica", "bold");
       doc.text("NOTIFICADO(A):", 20, 55);
